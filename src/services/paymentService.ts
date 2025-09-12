@@ -2,12 +2,18 @@ import { APIContracts, APIControllers } from 'authorizenet';
 import { authorizeNetConfig } from '../config/authorizeNet';
 import { logger } from '../config/logger';
 import { randomUUID } from 'crypto';
+import { AppDataSource } from '../config/database';
+import {
+  Transaction,
+  TransactionStatus,
+  TransactionType,
+} from '../entities/Transaction';
 
 export interface PaymentMethod {
   cardNumber: string;
   expirationDate: string; // MMYY format
   cardCode: string;
-  cardholderName?: string;
+  cardholderName?: string | undefined;
 }
 
 export interface BillingAddress {
@@ -24,11 +30,11 @@ export interface BillingAddress {
 export interface TransactionRequest {
   amount: number;
   paymentMethod: PaymentMethod;
-  billingAddress?: BillingAddress;
-  description?: string;
-  invoiceNumber?: string;
-  customerEmail?: string;
-  merchantTransactionId?: string;
+  billingAddress?: BillingAddress | undefined;
+  description?: string | undefined;
+  invoiceNumber?: string | undefined;
+  customerEmail?: string | undefined;
+  merchantTransactionId?: string | undefined;
 }
 
 export interface AuthorizeRequest extends TransactionRequest {
@@ -37,7 +43,17 @@ export interface AuthorizeRequest extends TransactionRequest {
 
 export interface CaptureRequest {
   transactionId: string;
-  amount?: number; // If not provided, captures the full authorized amount
+  amount?: number | undefined; // If not provided, captures the full authorized amount
+}
+
+export interface RefundRequest {
+  transactionId: string;
+  amount?: number | undefined; // If not provided, refunds the full amount
+  reason?: string | undefined;
+}
+
+export interface CancelRequest {
+  transactionId: string;
 }
 
 export interface PaymentResult {
@@ -70,17 +86,120 @@ class PaymentService {
   }
 
   /**
+   * Save transaction to database
+   */
+  private async saveTransaction(transactionData: {
+    transactionId: string;
+    authorizeNetTransactionId?: string;
+    type: TransactionType;
+    status: TransactionStatus;
+    amount: number;
+    currency: string;
+    customerEmail: string;
+    customerName?: string;
+    description?: string;
+    billingAddress?: BillingAddress;
+    cardLastFour?: string;
+    cardType?: string;
+    referenceTransactionId?: string;
+    failureReason?: string;
+  }): Promise<Transaction> {
+    const transactionRepository = AppDataSource.getRepository(Transaction);
+
+    const transaction = new Transaction();
+    transaction.transaction_id = transactionData.transactionId;
+    transaction.authorize_net_transaction_id =
+      transactionData.authorizeNetTransactionId || '';
+    transaction.type = transactionData.type;
+    transaction.status = transactionData.status;
+    transaction.amount = transactionData.amount;
+    transaction.currency = transactionData.currency;
+    transaction.customer_email = transactionData.customerEmail;
+    transaction.customer_name = transactionData.customerName || '';
+    transaction.description = transactionData.description || '';
+    transaction.card_last_four = transactionData.cardLastFour || '';
+    transaction.card_type = transactionData.cardType || '';
+    transaction.reference_transaction_id =
+      transactionData.referenceTransactionId || '';
+    transaction.failure_reason = transactionData.failureReason || '';
+
+    if (transactionData.billingAddress) {
+      transaction.billing_address = JSON.stringify(
+        transactionData.billingAddress
+      );
+    }
+
+    return await transactionRepository.save(transaction);
+  }
+
+  /**
+   * Update transaction status
+   */
+  private async updateTransactionStatus(
+    transactionId: string,
+    status: TransactionStatus,
+    authorizeNetTransactionId?: string,
+    failureReason?: string
+  ): Promise<void> {
+    const transactionRepository = AppDataSource.getRepository(Transaction);
+
+    const updateData: any = { status };
+    if (authorizeNetTransactionId) {
+      updateData.authorize_net_transaction_id = authorizeNetTransactionId;
+    }
+    if (failureReason) {
+      updateData.failure_reason = failureReason;
+    }
+
+    await transactionRepository.update(
+      { transaction_id: transactionId },
+      updateData
+    );
+  }
+
+  /**
    * Process a purchase transaction (charge immediately)
    */
   public async processPurchase(
     request: TransactionRequest
   ): Promise<PaymentResult> {
     const correlationId = randomUUID();
+    const transactionId = request.merchantTransactionId || randomUUID();
+
     logger.info('Processing purchase transaction', {
       correlationId,
       amount: request.amount,
-      merchantTransactionId: request.merchantTransactionId,
+      transactionId,
     });
+
+    // Save initial transaction to database
+    try {
+      await this.saveTransaction({
+        transactionId,
+        type: TransactionType.PAYMENT,
+        status: TransactionStatus.PROCESSING,
+        amount: request.amount,
+        currency: 'USD',
+        customerEmail: request.customerEmail || '',
+        customerName: '',
+        description: request.description || '',
+        billingAddress: request.billingAddress || {
+          firstName: '',
+          lastName: '',
+          address: '',
+          city: '',
+          state: '',
+          zip: '',
+          country: 'US',
+        },
+        cardLastFour: request.paymentMethod.cardNumber.slice(-4),
+      });
+    } catch (error) {
+      logger.error('Failed to save transaction to database', {
+        correlationId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
 
     return this.executeWithRetry(async () => {
       const transactionRequest = this.createTransactionRequest(
@@ -99,12 +218,29 @@ class PaymentService {
           createTransactionRequest.getJSON()
         );
 
-        controller.execute(() => {
+        controller.execute(async () => {
           const response = controller.getResponse();
           const result = this.processTransactionResponse(
             response,
             correlationId
           );
+
+          // Update transaction status in database
+          try {
+            await this.updateTransactionStatus(
+              transactionId,
+              result.success
+                ? TransactionStatus.COMPLETED
+                : TransactionStatus.FAILED,
+              result.transactionId,
+              result.success ? undefined : result.responseText
+            );
+          } catch (error) {
+            logger.error('Failed to update transaction status', {
+              correlationId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
 
           logger.info('Purchase transaction completed', {
             correlationId,
@@ -126,11 +262,42 @@ class PaymentService {
     request: AuthorizeRequest
   ): Promise<PaymentResult> {
     const correlationId = randomUUID();
+    const transactionId = request.merchantTransactionId || randomUUID();
+
     logger.info('Processing authorization transaction', {
       correlationId,
       amount: request.amount,
-      merchantTransactionId: request.merchantTransactionId,
+      transactionId,
     });
+
+    // Save initial transaction to database
+    try {
+      await this.saveTransaction({
+        transactionId,
+        type: TransactionType.AUTHORIZATION,
+        status: TransactionStatus.PROCESSING,
+        amount: request.amount,
+        currency: 'USD',
+        customerEmail: request.customerEmail || '',
+        customerName: '',
+        description: request.description || '',
+        billingAddress: request.billingAddress || {
+          firstName: '',
+          lastName: '',
+          address: '',
+          city: '',
+          state: '',
+          zip: '',
+          country: 'US',
+        },
+        cardLastFour: request.paymentMethod.cardNumber.slice(-4),
+      });
+    } catch (error) {
+      logger.error('Failed to save authorization transaction to database', {
+        correlationId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
 
     return this.executeWithRetry(async () => {
       const transactionRequest = this.createTransactionRequest(
@@ -149,12 +316,29 @@ class PaymentService {
           createTransactionRequest.getJSON()
         );
 
-        controller.execute(() => {
+        controller.execute(async () => {
           const response = controller.getResponse();
           const result = this.processTransactionResponse(
             response,
             correlationId
           );
+
+          // Update transaction status in database
+          try {
+            await this.updateTransactionStatus(
+              transactionId,
+              result.success
+                ? TransactionStatus.COMPLETED
+                : TransactionStatus.FAILED,
+              result.transactionId,
+              result.success ? undefined : result.responseText
+            );
+          } catch (error) {
+            logger.error('Failed to update authorization transaction status', {
+              correlationId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
 
           logger.info('Authorization transaction completed', {
             correlationId,
@@ -176,11 +360,44 @@ class PaymentService {
     request: CaptureRequest
   ): Promise<PaymentResult> {
     const correlationId = randomUUID();
+    const captureTransactionId = randomUUID();
+
     logger.info('Processing capture transaction', {
       correlationId,
       transactionId: request.transactionId,
+      captureTransactionId,
       amount: request.amount,
     });
+
+    // Save capture transaction to database
+    try {
+      await this.saveTransaction({
+        transactionId: captureTransactionId,
+        type: TransactionType.CAPTURE,
+        status: TransactionStatus.PROCESSING,
+        amount: request.amount || 0,
+        currency: 'USD',
+        customerEmail: '',
+        customerName: '',
+        description: 'Capture transaction',
+        billingAddress: {
+          firstName: '',
+          lastName: '',
+          address: '',
+          city: '',
+          state: '',
+          zip: '',
+          country: 'US',
+        },
+        cardLastFour: '',
+        referenceTransactionId: request.transactionId,
+      });
+    } catch (error) {
+      logger.error('Failed to save capture transaction to database', {
+        correlationId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
 
     return this.executeWithRetry(async () => {
       const transactionRequest = new APIContracts.TransactionRequestType();
@@ -205,14 +422,248 @@ class PaymentService {
           createTransactionRequest.getJSON()
         );
 
-        controller.execute(() => {
+        controller.execute(async () => {
           const response = controller.getResponse();
           const result = this.processTransactionResponse(
             response,
             correlationId
           );
 
+          // Update capture transaction status in database
+          try {
+            await this.updateTransactionStatus(
+              captureTransactionId,
+              result.success
+                ? TransactionStatus.COMPLETED
+                : TransactionStatus.FAILED,
+              result.transactionId,
+              result.success ? undefined : result.responseText
+            );
+          } catch (error) {
+            logger.error('Failed to update capture transaction status', {
+              correlationId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
+
           logger.info('Capture transaction completed', {
+            correlationId,
+            success: result.success,
+            transactionId: result.transactionId,
+            responseCode: result.responseCode,
+          });
+
+          resolve(result);
+        });
+      });
+    }, correlationId);
+  }
+
+  /**
+   * Refund a previously completed transaction
+   */
+  public async refundTransaction(
+    request: RefundRequest
+  ): Promise<PaymentResult> {
+    const correlationId = randomUUID();
+    const refundTransactionId = randomUUID();
+
+    logger.info('Processing refund transaction', {
+      correlationId,
+      transactionId: request.transactionId,
+      refundTransactionId,
+      amount: request.amount,
+      reason: request.reason,
+    });
+
+    // Save refund transaction to database
+    try {
+      await this.saveTransaction({
+        transactionId: refundTransactionId,
+        type: TransactionType.REFUND,
+        status: TransactionStatus.PROCESSING,
+        amount: request.amount || 0,
+        currency: 'USD',
+        customerEmail: '',
+        customerName: '',
+        description: request.reason || 'Refund transaction',
+        billingAddress: {
+          firstName: '',
+          lastName: '',
+          address: '',
+          city: '',
+          state: '',
+          zip: '',
+          country: 'US',
+        },
+        cardLastFour: '',
+        referenceTransactionId: request.transactionId,
+      });
+    } catch (error) {
+      logger.error('Failed to save refund transaction to database', {
+        correlationId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+
+    return this.executeWithRetry(async () => {
+      const transactionRequest = new APIContracts.TransactionRequestType();
+      transactionRequest.setTransactionType(
+        APIContracts.TransactionTypeEnum.REFUNDTRANSACTION
+      );
+      transactionRequest.setRefTransId(request.transactionId);
+
+      if (request.amount) {
+        transactionRequest.setAmount(request.amount);
+      }
+
+      // For refunds, we need to provide payment method info (last 4 digits)
+      // Since we don't store card details, we'll use a placeholder that works in sandbox
+      const paymentType = new APIContracts.PaymentType();
+      const creditCard = new APIContracts.CreditCardType();
+      creditCard.setCardNumber('XXXX1111'); // Last 4 digits placeholder for sandbox
+      creditCard.setExpirationDate('XXXX'); // Expiration date placeholder
+      paymentType.setCreditCard(creditCard);
+      transactionRequest.setPayment(paymentType);
+
+      const createTransactionRequest =
+        new APIContracts.CreateTransactionRequest();
+      createTransactionRequest.setMerchantAuthentication(
+        this.merchantAuthentication
+      );
+      createTransactionRequest.setTransactionRequest(transactionRequest);
+
+      return new Promise<PaymentResult>(resolve => {
+        const controller = new APIControllers.CreateTransactionController(
+          createTransactionRequest.getJSON()
+        );
+
+        controller.execute(async () => {
+          const response = controller.getResponse();
+          const result = this.processTransactionResponse(
+            response,
+            correlationId
+          );
+
+          // Update refund transaction status in database
+          try {
+            await this.updateTransactionStatus(
+              refundTransactionId,
+              result.success
+                ? TransactionStatus.COMPLETED
+                : TransactionStatus.FAILED,
+              result.transactionId,
+              result.success ? undefined : result.responseText
+            );
+          } catch (error) {
+            logger.error('Failed to update refund transaction status', {
+              correlationId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
+
+          logger.info('Refund transaction completed', {
+            correlationId,
+            success: result.success,
+            transactionId: result.transactionId,
+            responseCode: result.responseCode,
+          });
+
+          resolve(result);
+        });
+      });
+    }, correlationId);
+  }
+
+  /**
+   * Cancel (void) a previously authorized transaction
+   */
+  public async cancelTransaction(
+    request: CancelRequest
+  ): Promise<PaymentResult> {
+    const correlationId = randomUUID();
+    const voidTransactionId = randomUUID();
+
+    logger.info('Processing cancel transaction', {
+      correlationId,
+      transactionId: request.transactionId,
+      voidTransactionId,
+    });
+
+    // Save void transaction to database
+    try {
+      await this.saveTransaction({
+        transactionId: voidTransactionId,
+        type: TransactionType.VOID,
+        status: TransactionStatus.PROCESSING,
+        amount: 0,
+        currency: 'USD',
+        customerEmail: '',
+        customerName: '',
+        description: 'Void transaction',
+        billingAddress: {
+          firstName: '',
+          lastName: '',
+          address: '',
+          city: '',
+          state: '',
+          zip: '',
+          country: 'US',
+        },
+        cardLastFour: '',
+        referenceTransactionId: request.transactionId,
+      });
+    } catch (error) {
+      logger.error('Failed to save void transaction to database', {
+        correlationId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+
+    return this.executeWithRetry(async () => {
+      const transactionRequest = new APIContracts.TransactionRequestType();
+      transactionRequest.setTransactionType(
+        APIContracts.TransactionTypeEnum.VOIDTRANSACTION
+      );
+      transactionRequest.setRefTransId(request.transactionId);
+
+      const createTransactionRequest =
+        new APIContracts.CreateTransactionRequest();
+      createTransactionRequest.setMerchantAuthentication(
+        this.merchantAuthentication
+      );
+      createTransactionRequest.setTransactionRequest(transactionRequest);
+
+      return new Promise<PaymentResult>(resolve => {
+        const controller = new APIControllers.CreateTransactionController(
+          createTransactionRequest.getJSON()
+        );
+
+        controller.execute(async () => {
+          const response = controller.getResponse();
+          const result = this.processTransactionResponse(
+            response,
+            correlationId
+          );
+
+          // Update void transaction status in database
+          try {
+            await this.updateTransactionStatus(
+              voidTransactionId,
+              result.success
+                ? TransactionStatus.COMPLETED
+                : TransactionStatus.FAILED,
+              result.transactionId,
+              result.success ? undefined : result.responseText
+            );
+          } catch (error) {
+            logger.error('Failed to update void transaction status', {
+              correlationId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
+
+          logger.info('Cancel transaction completed', {
             correlationId,
             success: result.success,
             transactionId: result.transactionId,
@@ -291,24 +742,76 @@ class PaymentService {
     };
 
     try {
-      if (response && response.getMessages()) {
-        const messages = response.getMessages();
-        result.responseCode = messages.getResultCode();
+      // Handle both old SDK format (with getMessages) and new format (direct object)
+      let messages: any;
+      let transactionResponse: any;
+      console.log('response::', JSON.stringify(response, null, 2));
+      if (response && typeof response.getMessages === 'function') {
+        // Old SDK format
+        messages = response.getMessages();
+        transactionResponse = response.getTransactionResponse();
+      } else if (response && response.messages) {
+        // New format - direct object access
+        messages = response.messages;
+        transactionResponse = response.transactionResponse;
+      } else {
+        throw new Error('Invalid response format from Authorize.Net');
+      }
 
-        if (messages.getResultCode() === APIContracts.MessageTypeEnum.OK) {
-          const transactionResponse = response.getTransactionResponse();
+      if (messages) {
+        // Handle messages based on format
+        const resultCode =
+          messages.resultCode ||
+          (typeof messages.getResultCode === 'function'
+            ? messages.getResultCode()
+            : null);
+        result.responseCode = resultCode;
 
+        if (
+          resultCode === 'Ok' ||
+          resultCode === APIContracts.MessageTypeEnum.OK
+        ) {
           if (transactionResponse) {
-            result.success = transactionResponse.getResponseCode() === '1';
-            result.transactionId = transactionResponse.getTransId();
-            result.authCode = transactionResponse.getAuthCode();
-            result.responseText =
-              transactionResponse
-                .getMessages()
-                ?.getMessage()?.[0]
-                ?.getDescription() || 'Transaction approved';
-            result.avsResultCode = transactionResponse.getAvsResultCode();
-            result.cvvResultCode = transactionResponse.getCvvResultCode();
+            // Handle transaction response based on format
+            const responseCode =
+              transactionResponse.responseCode ||
+              (typeof transactionResponse.getResponseCode === 'function'
+                ? transactionResponse.getResponseCode()
+                : null);
+            result.success = responseCode === '1';
+            result.transactionId =
+              transactionResponse.transId ||
+              (typeof transactionResponse.getTransId === 'function'
+                ? transactionResponse.getTransId()
+                : null);
+            result.authCode =
+              transactionResponse.authCode ||
+              (typeof transactionResponse.getAuthCode === 'function'
+                ? transactionResponse.getAuthCode()
+                : null);
+
+            // Get response text from messages
+            if (
+              transactionResponse.messages &&
+              transactionResponse.messages.length > 0
+            ) {
+              result.responseText =
+                transactionResponse.messages[0].description ||
+                'Transaction approved';
+            } else {
+              result.responseText = 'Transaction approved';
+            }
+
+            result.avsResultCode =
+              transactionResponse.avsResultCode ||
+              (typeof transactionResponse.getAvsResultCode === 'function'
+                ? transactionResponse.getAvsResultCode()
+                : null);
+            result.cvvResultCode =
+              transactionResponse.cvvResultCode ||
+              (typeof transactionResponse.getCvvResultCode === 'function'
+                ? transactionResponse.getCvvResultCode()
+                : null);
 
             // Log transaction details
             logger.info('Transaction response processed', {
@@ -324,10 +827,15 @@ class PaymentService {
           }
         } else {
           // Handle API-level errors
-          const messageArray = messages.getMessage();
+          const messageArray =
+            messages.message ||
+            (typeof messages.getMessage === 'function'
+              ? messages.getMessage()
+              : []);
           if (messageArray && messageArray.length > 0) {
             result.errors = messageArray.map(
-              (msg: any) => `${msg.getCode()}: ${msg.getText()}`
+              (msg: any) =>
+                `${msg.code || (typeof msg.getCode === 'function' ? msg.getCode() : 'Unknown')}: ${msg.text || (typeof msg.getText === 'function' ? msg.getText() : 'Unknown error')}`
             );
             result.responseText = result.errors?.[0] || 'API Error';
           }

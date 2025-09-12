@@ -232,15 +232,12 @@ describe('PaymentService', () => {
     it('should handle declined transaction', async () => {
       // Mock declined response
       mockTransactionResponse.getResponseCode.mockReturnValue('2');
-      mockTransactionResponse.getMessages.mockReturnValue({
-        getMessage: jest.fn().mockReturnValue([
-          {
-            getDescription: jest
-              .fn()
-              .mockReturnValue('This transaction has been declined.'),
-          },
-        ]),
-      });
+      // Mock the messages property for declined transactions
+      mockTransactionResponse.messages = [
+        {
+          description: 'This transaction has been declined.',
+        },
+      ];
 
       const request: TransactionRequest = {
         amount: 100.0,
@@ -415,7 +412,7 @@ describe('PaymentService', () => {
       const result = await paymentService.processPurchase(request);
 
       expect(result.success).toBe(false);
-      expect(result.responseText).toBe('Invalid response from payment gateway');
+      expect(result.responseText).toBe('Error processing payment response');
     });
 
     it('should handle response without transaction response', async () => {

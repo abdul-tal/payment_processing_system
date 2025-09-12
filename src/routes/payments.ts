@@ -119,11 +119,12 @@ router.post(
       req.body.paymentMethod
     );
     if (validationErrors.length > 0) {
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Invalid payment method',
         details: validationErrors,
         correlationId: req.correlationId,
       });
+      return;
     }
 
     // Prepare transaction request
@@ -224,11 +225,12 @@ router.post(
       req.body.paymentMethod
     );
     if (validationErrors.length > 0) {
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Invalid payment method',
         details: validationErrors,
         correlationId: req.correlationId,
       });
+      return;
     }
 
     // Prepare authorization request
@@ -327,7 +329,7 @@ router.post(
     });
 
     const captureRequest: CaptureRequest = {
-      transactionId,
+      transactionId: transactionId!,
       amount,
     };
 
