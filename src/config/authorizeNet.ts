@@ -30,12 +30,12 @@ class AuthorizeNetConfigService {
 
   private createConfig(): AuthorizeNetConfig {
     const environment =
-      (process.env.AUTHNET_ENVIRONMENT as 'sandbox' | 'production') ||
+      (process.env['AUTHNET_ENVIRONMENT'] as 'sandbox' | 'production') ||
       'sandbox';
 
     return {
-      apiLoginId: process.env.AUTHNET_API_LOGIN_ID!,
-      transactionKey: process.env.AUTHNET_TRANSACTION_KEY!,
+      apiLoginId: process.env['AUTHNET_API_LOGIN_ID']!,
+      transactionKey: process.env['AUTHNET_TRANSACTION_KEY']!,
       environment,
       endpoint:
         environment === 'production'
