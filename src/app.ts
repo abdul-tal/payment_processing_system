@@ -12,6 +12,7 @@ import paymentRoutes from './routes/payments';
 import paymentsV1Routes from './routes/paymentsV1';
 import webhookRoutes from './routes/webhooks';
 import healthRoutes from './routes/health';
+import { subscriptionRoutes } from './routes/subscriptionRoutes';
 
 export function createApp(): express.Application {
   const app = express();
@@ -95,6 +96,7 @@ export function createApp(): express.Application {
   // API routes
   app.use('/api/payments', paymentRoutes);
   app.use('/api/v1/payments', paymentsV1Routes);
+  app.use('/api/v1/subscriptions', subscriptionRoutes);
   app.use('/api/webhooks', webhookRoutes);
 
   // 404 handler

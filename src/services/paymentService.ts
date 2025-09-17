@@ -48,12 +48,37 @@ export interface CaptureRequest {
 
 export interface RefundRequest {
   transactionId: string;
-  amount?: number | undefined; // If not provided, refunds the full amount
-  reason?: string | undefined;
+  amount: number;
+  paymentMethod: PaymentMethod; // Last 4 digits and expiration date required for refunds
+  reason?: string;
 }
 
 export interface CancelRequest {
   transactionId: string;
+}
+
+export interface SubscriptionRequest {
+  name: string;
+  length: number;
+  unit: 'days' | 'months';
+  startDate: Date;
+  totalOccurrences?: number;
+  trialOccurrences?: number;
+  amount: number;
+  trialAmount?: number;
+  paymentMethod: PaymentMethod;
+  billingAddress?: BillingAddress;
+  customerEmail?: string;
+  customerName?: string;
+  description?: string;
+  merchantSubscriptionId?: string;
+}
+
+export interface SubscriptionResponse {
+  subscriptionId: string;
+  resultCode: string;
+  message: string;
+  success: boolean;
 }
 
 export interface PaymentResult {
@@ -946,6 +971,178 @@ class PaymentService {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Create a subscription using Authorize.Net ARB
+   */
+  async createSubscription(
+    request: SubscriptionRequest,
+    correlationId?: string
+  ): Promise<SubscriptionResponse> {
+    const corrId = correlationId || randomUUID();
+
+    logger.info('Creating Authorize.Net subscription', {
+      correlationId: corrId,
+      subscriptionName: request.name,
+      amount: request.amount,
+      interval: `${request.length} ${request.unit}`,
+      customerEmail: request.customerEmail,
+    });
+
+    try {
+      // Create subscription request
+      const subscriptionType = new APIContracts.ARBSubscriptionType();
+      subscriptionType.setName(request.name);
+
+      // Set payment schedule
+      const paymentSchedule = new APIContracts.PaymentScheduleType();
+      const interval = new APIContracts.PaymentScheduleType.Interval();
+      interval.setLength(request.length);
+      interval.setUnit(
+        request.unit === 'months'
+          ? APIContracts.ARBSubscriptionUnitEnum.MONTHS
+          : APIContracts.ARBSubscriptionUnitEnum.DAYS
+      );
+
+      paymentSchedule.setInterval(interval);
+      paymentSchedule.setStartDate(
+        request.startDate.toISOString().split('T')[0]
+      );
+
+      // Set total occurrences to 9999 for ongoing subscriptions (Authorize.Net requirement)
+      paymentSchedule.setTotalOccurrences(
+        request.totalOccurrences && request.totalOccurrences > 0
+          ? request.totalOccurrences
+          : 9999
+      );
+
+      subscriptionType.setPaymentSchedule(paymentSchedule);
+
+      // Set amount
+      subscriptionType.setAmount(request.amount);
+
+      if (request.trialAmount !== undefined) {
+        subscriptionType.setTrialAmount(request.trialAmount);
+      }
+
+      // Set payment method
+      const payment = new APIContracts.PaymentType();
+      const creditCard = new APIContracts.CreditCardType();
+      creditCard.setCardNumber(request.paymentMethod.cardNumber);
+      creditCard.setExpirationDate(request.paymentMethod.expirationDate);
+      creditCard.setCardCode(request.paymentMethod.cardCode);
+      payment.setCreditCard(creditCard);
+      subscriptionType.setPayment(payment);
+
+      // Set billing address (required by Authorize.Net)
+      const billTo = new APIContracts.NameAndAddressType();
+      if (request.billingAddress) {
+        billTo.setFirstName(request.billingAddress.firstName);
+        billTo.setLastName(request.billingAddress.lastName);
+        billTo.setAddress(request.billingAddress.address);
+        billTo.setCity(request.billingAddress.city);
+        billTo.setState(request.billingAddress.state);
+        billTo.setZip(request.billingAddress.zip);
+        billTo.setCountry(request.billingAddress.country);
+      } else {
+        // Use customer name as fallback for required fields
+        const nameParts = (request.customerName || 'Customer Name').split(' ');
+        billTo.setFirstName(nameParts[0] || 'Customer');
+        billTo.setLastName(nameParts[1] || 'Name');
+        billTo.setAddress('123 Main St');
+        billTo.setCity('Anytown');
+        billTo.setState('CA');
+        billTo.setZip('12345');
+        billTo.setCountry('US');
+      }
+      subscriptionType.setBillTo(billTo);
+
+      // Set customer info
+      if (request.customerEmail || request.customerName) {
+        const customer = new APIContracts.CustomerType();
+        if (request.customerEmail) {
+          customer.setEmail(request.customerEmail);
+        }
+        if (request.customerName) {
+          // const nameParts = request.customerName.split(' ');
+          customer.setId(
+            request.customerName.replace(/\s+/g, '_').toLowerCase()
+          );
+        }
+        subscriptionType.setCustomer(customer);
+      }
+
+      // Note: merchantSubscriptionId is stored locally, not sent to Authorize.Net
+
+      // Create the request
+      const createRequest = new APIContracts.ARBCreateSubscriptionRequest();
+      createRequest.setMerchantAuthentication(this.merchantAuthentication);
+      createRequest.setSubscription(subscriptionType);
+
+      // Execute the request
+      const controller = new APIControllers.ARBCreateSubscriptionController(
+        createRequest.getJSON()
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
+      return new Promise((resolve, _reject) => {
+        controller.execute(() => {
+          const apiResponse = controller.getResponse();
+          const response = new APIContracts.ARBCreateSubscriptionResponse(
+            apiResponse
+          );
+
+          logger.info('Authorize.Net subscription creation response', {
+            correlationId: corrId,
+            resultCode: response.getMessages().getResultCode(),
+            subscriptionId: response.getSubscriptionId(),
+          });
+
+          if (
+            response.getMessages().getResultCode() ===
+            APIContracts.MessageTypeEnum.OK
+          ) {
+            resolve({
+              subscriptionId: response.getSubscriptionId(),
+              resultCode: response.getMessages().getResultCode(),
+              message: response.getMessages().getMessage()[0].getText(),
+              success: true,
+            });
+          } else {
+            const errorMessages = response
+              .getMessages()
+              .getMessage()
+              .map((msg: any) => msg.getText())
+              .join(', ');
+            logger.error('Authorize.Net subscription creation failed', {
+              correlationId: corrId,
+              errors: errorMessages,
+            });
+
+            resolve({
+              subscriptionId: '',
+              resultCode: response.getMessages().getResultCode(),
+              message: errorMessages,
+              success: false,
+            });
+          }
+        });
+      });
+    } catch (error) {
+      logger.error('Error creating Authorize.Net subscription', {
+        correlationId: corrId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+
+      return {
+        subscriptionId: '',
+        resultCode: 'ERROR',
+        message:
+          error instanceof Error ? error.message : 'Unknown error occurred',
+        success: false,
+      };
+    }
   }
 
   /**
