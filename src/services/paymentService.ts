@@ -1006,9 +1006,12 @@ class PaymentService {
       );
 
       paymentSchedule.setInterval(interval);
-      paymentSchedule.setStartDate(
-        request.startDate.toISOString().split('T')[0]
-      );
+      const startDateString = request.startDate
+        ? request.startDate.toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+      if (startDateString) {
+        paymentSchedule.setStartDate(startDateString);
+      }
 
       // Set total occurrences to 9999 for ongoing subscriptions (Authorize.Net requirement)
       paymentSchedule.setTotalOccurrences(

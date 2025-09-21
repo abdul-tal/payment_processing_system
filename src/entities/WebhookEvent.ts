@@ -59,10 +59,10 @@ export class WebhookEvent {
   source!: string; // Source system (e.g., 'authorize_net')
 
   @Column({ type: 'varchar', length: 100, nullable: true })
-  related_transaction_id!: string;
+  related_transaction_id!: string | null;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
-  related_subscription_id!: string;
+  related_subscription_id!: string | null;
 
   @Column({ type: 'integer', default: 0 })
   retry_count!: number;

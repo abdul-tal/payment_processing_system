@@ -102,10 +102,10 @@ export class SubscriptionController {
         customer_email,
         customer_name,
         plan_name,
-        amount: parseFloat(amount.toFixed(2)),
+        amount: parseFloat(amount.toString()),
         currency: currency || 'USD',
         billing_interval,
-        start_date: start_date ? new Date(start_date) : undefined,
+        start_date: start_date ? new Date(start_date) : new Date(),
         total_billing_cycles,
         card_number,
         expiry_month,
@@ -222,7 +222,7 @@ export class SubscriptionController {
     } catch (error) {
       logger.error('Failed to get subscription via API', {
         correlationId,
-        subscription_id: req.params.id,
+        subscription_id: req.params['id'],
         error: error instanceof Error ? error.message : 'Unknown error',
       });
 
@@ -244,8 +244,7 @@ export class SubscriptionController {
 
     try {
       const { id } = req.params;
-      const { plan_name, amount, billing_interval, status, metadata } =
-        req.body;
+      const body = req.body;
 
       if (!id) {
         res.status(400).json({
@@ -257,8 +256,8 @@ export class SubscriptionController {
 
       // Validate billing interval if provided
       if (
-        billing_interval &&
-        !Object.values(BillingInterval).includes(billing_interval)
+        body.billing_interval &&
+        !Object.values(BillingInterval).includes(body.billing_interval)
       ) {
         res.status(400).json({
           success: false,
@@ -269,7 +268,10 @@ export class SubscriptionController {
       }
 
       // Validate status if provided
-      if (status && !Object.values(SubscriptionStatus).includes(status)) {
+      if (
+        body.status &&
+        !Object.values(SubscriptionStatus).includes(body.status)
+      ) {
         res.status(400).json({
           success: false,
           error: 'Invalid subscription status',
@@ -279,7 +281,10 @@ export class SubscriptionController {
       }
 
       // Validate amount if provided
-      if (amount !== undefined && (typeof amount !== 'number' || amount <= 0)) {
+      if (
+        body.amount !== undefined &&
+        (typeof body.amount !== 'number' || body.amount <= 0)
+      ) {
         res.status(400).json({
           success: false,
           error: 'Amount must be a positive number',
@@ -288,11 +293,11 @@ export class SubscriptionController {
       }
 
       const updateRequest: UpdateSubscriptionRequest = {
-        plan_name,
-        amount: amount ? parseFloat(amount.toFixed(2)) : undefined,
-        billing_interval,
-        status,
-        metadata,
+        plan_name: body.plan_name,
+        amount: body.amount ? parseFloat(body.amount) : 0,
+        billing_interval: body.billing_interval,
+        status: body.status,
+        metadata: body.metadata,
       };
 
       const subscription = await this.subscriptionService.updateSubscription(
@@ -341,7 +346,7 @@ export class SubscriptionController {
     } catch (error) {
       logger.error('Failed to update subscription via API', {
         correlationId,
-        subscription_id: req.params.id,
+        subscription_id: req.params['id'],
         error: error instanceof Error ? error.message : 'Unknown error',
       });
 
@@ -407,7 +412,7 @@ export class SubscriptionController {
     } catch (error) {
       logger.error('Failed to cancel subscription via API', {
         correlationId,
-        subscription_id: req.params.id,
+        subscription_id: req.params['id'],
         error: error instanceof Error ? error.message : 'Unknown error',
       });
 
@@ -477,7 +482,7 @@ export class SubscriptionController {
     } catch (error) {
       logger.error('Failed to get customer subscriptions via API', {
         correlationId,
-        customer_email: req.params.email,
+        customer_email: req.params['email'],
         error: error instanceof Error ? error.message : 'Unknown error',
       });
 

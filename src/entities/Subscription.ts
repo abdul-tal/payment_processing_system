@@ -80,7 +80,7 @@ export class Subscription {
   billing_cycles_completed!: number;
 
   @Column({ type: 'integer', nullable: true })
-  total_billing_cycles!: number;
+  total_billing_cycles!: number | null;
 
   @Column({ type: 'varchar', length: 4, nullable: true })
   card_last_four!: string;

@@ -331,8 +331,13 @@ export class PaymentController {
 
     const refundRequest: RefundRequest = {
       transactionId,
-      amount: body.amount,
-      reason: body.reason,
+      amount: body.amount || 0,
+      paymentMethod: {
+        cardNumber: '****',
+        expirationDate: '****',
+        cardCode: '***',
+      },
+      reason: body.reason || 'Refund requested',
     };
 
     try {

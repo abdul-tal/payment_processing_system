@@ -99,7 +99,7 @@ export class SubscriptionService {
               : 1,
         unit: request.billing_interval === 'yearly' ? 'months' : 'months',
         startDate: startDate,
-        totalOccurrences: request.total_billing_cycles || undefined,
+        totalOccurrences: request.total_billing_cycles || 9999,
         amount: request.amount,
         paymentMethod: {
           cardNumber: request.card_number,
@@ -108,7 +108,7 @@ export class SubscriptionService {
           cardholderName: request.customer_name,
         },
         customerEmail: request.customer_email,
-        customerName: request.customer_name,
+        customerName: request.customer_name || request.customer_email,
         description: `Subscription for ${request.plan_name}`,
         merchantSubscriptionId: subscriptionId,
       };
@@ -437,7 +437,8 @@ export class SubscriptionService {
       last_payment_failure: {
         date: new Date().toISOString(),
         error: error.message,
-        retry_count: ((subscription.metadata?.retry_count as number) || 0) + 1,
+        retry_count:
+          ((subscription.metadata?.['retry_count'] as number) || 0) + 1,
       },
     };
 

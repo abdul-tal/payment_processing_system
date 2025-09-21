@@ -10,7 +10,7 @@ import { validationErrorHandler } from './middleware/validation';
 import { logger } from './config/logger';
 import paymentRoutes from './routes/payments';
 import paymentsV1Routes from './routes/paymentsV1';
-import webhookRoutes from './routes/webhooks';
+import webhookRoutes from './routes/webhookRoutes';
 import healthRoutes from './routes/health';
 import { subscriptionRoutes } from './routes/subscriptionRoutes';
 
@@ -69,7 +69,8 @@ export function createApp(): express.Application {
     }
   });
 
-  // Body parsing middleware
+  // Body parsing middleware (exclude webhook routes)
+  app.use('/api/v1/webhooks', express.raw({ type: 'application/json' }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
@@ -97,7 +98,7 @@ export function createApp(): express.Application {
   app.use('/api/payments', paymentRoutes);
   app.use('/api/v1/payments', paymentsV1Routes);
   app.use('/api/v1/subscriptions', subscriptionRoutes);
-  app.use('/api/webhooks', webhookRoutes);
+  app.use('/api/v1/webhooks', webhookRoutes);
 
   // 404 handler
   app.use('*', (req, res) => {

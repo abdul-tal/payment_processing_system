@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import dotenv from 'dotenv';
 import { createApp } from './app';
 import { initializeDatabase } from './config/database';
+import { initializeRedis } from './config/redis';
 import { logger } from './config/logger';
 
 // Load environment variables
@@ -18,6 +19,11 @@ async function startServer(): Promise<void> {
     logger.info('Initializing database connection...');
     await initializeDatabase();
     logger.info('Database connected successfully');
+
+    // Initialize Redis connection
+    logger.info('Initializing Redis connection...');
+    await initializeRedis();
+    logger.info('Redis connected successfully');
 
     // Create Express app with all middleware and routes
     const app = createApp();
@@ -42,6 +48,11 @@ async function startServer(): Promise<void> {
         }
 
         try {
+          // Close Redis connections
+          const { closeRedis } = await import('./config/redis');
+          await closeRedis();
+          logger.info('Redis connections closed');
+
           // Close database connection
           if (require('./config/database').AppDataSource.isInitialized) {
             await require('./config/database').AppDataSource.destroy();
