@@ -114,13 +114,21 @@ export const captureRawBody = (
   res: Response,
   next: NextFunction
 ): void => {
-  console.log('in captureRawBody...');
-  // With express.raw(), the body is already available as req.body (Buffer)
-  if (req.body && Buffer.isBuffer(req.body)) {
-    req.rawBody = req.body;
+  // Handle different body types for webhook signature validation
+  if (req.body) {
+    if (Buffer.isBuffer(req.body)) {
+      req.rawBody = req.body;
+    } else if (typeof req.body === 'string') {
+      req.rawBody = Buffer.from(req.body, 'utf8');
+    } else if (typeof req.body === 'object') {
+      // For JSON bodies, convert to string then buffer
+      req.rawBody = Buffer.from(JSON.stringify(req.body), 'utf8');
+    } else {
+      req.rawBody = Buffer.from(String(req.body), 'utf8');
+    }
     next();
   } else {
-    logger.error('Raw body not available or not a Buffer');
+    logger.error('No request body available');
     res.status(400).json({ error: 'Invalid request body' });
   }
 };

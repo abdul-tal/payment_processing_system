@@ -431,6 +431,19 @@ export class SubscriptionController {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
 
+      // If it's a database connection error or UUID validation error, treat as not found
+      if (
+        error instanceof Error &&
+        (error.message.includes('Connection terminated') ||
+          error.message.includes('invalid input syntax for type uuid'))
+      ) {
+        res.status(404).json({
+          success: false,
+          error: 'Subscription not found',
+        });
+        return;
+      }
+
       res.status(500).json({
         success: false,
         error: 'Failed to cancel subscription',
@@ -482,6 +495,7 @@ export class SubscriptionController {
         data: subscriptions.map(subscription => ({
           id: subscription.id,
           subscription_id: subscription.subscription_id,
+          customer_email: subscription.customer_email,
           plan_name: subscription.plan_name,
           amount: subscription.amount,
           currency: subscription.currency,

@@ -1,4 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
+
+// Extend Request interface to include custom properties
+declare global {
+  namespace Express {
+    interface Request {
+      traceContext?: {
+        correlationId: string;
+        traceId: string;
+        spanId: string;
+      };
+      startTime?: number;
+    }
+  }
+}
 import { randomUUID } from 'crypto';
 import { tracingService } from '../services/TracingService';
 import { logger } from '../config/logger';
@@ -50,7 +64,7 @@ export function correlationIdMiddleware(
   };
 
   // Attach enhanced context to request for use in other middleware/controllers
-  req.traceContext = {
+  (req as any).traceContext = {
     correlationId,
     traceId,
     spanId,
@@ -64,7 +78,7 @@ export function correlationIdMiddleware(
   const originalSend = res.send;
   res.send = function (body) {
     const endTime = Date.now();
-    const duration = endTime - (req.startTime || endTime);
+    const duration = endTime - ((req as any).startTime || endTime);
 
     // Add response information to span
     tracingService.addAttributesToActiveSpan({
@@ -85,7 +99,7 @@ export function correlationIdMiddleware(
   };
 
   // Record request start time
-  req.startTime = Date.now();
+  (req as any).startTime = Date.now();
 
   next();
 }

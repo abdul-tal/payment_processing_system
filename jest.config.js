@@ -13,10 +13,13 @@ module.exports = {
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
+  setupFiles: ['<rootDir>/tests/globalSetup.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   forceExit: true,
-  detectOpenHandles: false,
-  testTimeout: 10000,
+  detectOpenHandles: true,
+  testTimeout: 30000,
+  maxWorkers: 1,
+  // runInBand: true, // Commented out - use maxWorkers instead
 };

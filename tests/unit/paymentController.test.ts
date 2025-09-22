@@ -353,6 +353,11 @@ describe('PaymentController', () => {
       expect(mockPaymentService.refundTransaction).toHaveBeenCalledWith({
         transactionId: 'txn_123456789',
         amount: 50.0,
+        paymentMethod: {
+          cardNumber: '****',
+          expirationDate: '****',
+          cardCode: '***',
+        },
         reason: 'Customer request',
       });
       expect(responseStatus).toHaveBeenCalledWith(201);

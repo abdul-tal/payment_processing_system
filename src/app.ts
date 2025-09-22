@@ -85,7 +85,7 @@ export function createApp(): express.Application {
   app.use(correlationIdMiddleware);
 
   // Request logging middleware with trace context
-  app.use(requestLoggingMiddleware);
+  app.use(requestLoggingMiddleware as any);
 
   // Logging middleware
   app.use(

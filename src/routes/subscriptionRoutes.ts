@@ -16,6 +16,12 @@ router.post(
   subscriptionController.createSubscription.bind(subscriptionController)
 );
 
+// GET /api/v1/subscriptions/customer/:email - Get subscriptions by customer email (must be before /:id)
+router.get(
+  '/customer/:email',
+  subscriptionController.getSubscriptionsByCustomer.bind(subscriptionController)
+);
+
 // GET /api/v1/subscriptions/:id - Get subscription by ID
 router.get(
   '/:id',
@@ -32,12 +38,6 @@ router.put(
 router.delete(
   '/:id',
   subscriptionController.cancelSubscription.bind(subscriptionController)
-);
-
-// GET /api/v1/subscriptions/customer/:email - Get subscriptions by customer email
-router.get(
-  '/customer/:email',
-  subscriptionController.getSubscriptionsByCustomer.bind(subscriptionController)
 );
 
 export { router as subscriptionRoutes };

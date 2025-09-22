@@ -54,27 +54,29 @@ export class AlertService {
   constructor() {
     this.config = {
       responseTimeThreshold: parseInt(
-        process.env.RESPONSE_TIME_THRESHOLD || '5000',
+        process.env['RESPONSE_TIME_THRESHOLD'] || '5000',
         10
       ),
-      errorRateThreshold: parseFloat(process.env.ERROR_RATE_THRESHOLD || '0.1'),
+      errorRateThreshold: parseFloat(
+        process.env['ERROR_RATE_THRESHOLD'] || '0.1'
+      ),
       memoryUsageThreshold: parseFloat(
-        process.env.MEMORY_USAGE_THRESHOLD || '0.8'
+        process.env['MEMORY_USAGE_THRESHOLD'] || '0.8'
       ),
       databaseQueryThreshold: parseInt(
-        process.env.DB_QUERY_THRESHOLD || '1000',
+        process.env['DB_QUERY_THRESHOLD'] || '1000',
         10
       ),
       externalApiThreshold: parseInt(
-        process.env.EXTERNAL_API_THRESHOLD || '10000',
+        process.env['EXTERNAL_API_THRESHOLD'] || '10000',
         10
       ),
       queueBacklogThreshold: parseInt(
-        process.env.QUEUE_BACKLOG_THRESHOLD || '100',
+        process.env['QUEUE_BACKLOG_THRESHOLD'] || '100',
         10
       ),
       checkIntervalMs: parseInt(
-        process.env.BOTTLENECK_CHECK_INTERVAL || '60000',
+        process.env['BOTTLENECK_CHECK_INTERVAL'] || '60000',
         10
       ),
     };
@@ -120,13 +122,13 @@ export class AlertService {
     details: Record<string, any> = {}
   ): Alert {
     const alert: Alert = {
-      id: this.generateAlertId(),
+      id: crypto.randomUUID(),
       type,
       severity,
       message,
       details,
       timestamp: new Date(),
-      traceId: tracingService.getCurrentTraceId(),
+      traceId: tracingService.getCurrentTraceId() || 'unknown',
       resolved: false,
     };
 
@@ -370,13 +372,6 @@ export class AlertService {
         details: alert.details,
       });
     }
-  }
-
-  /**
-   * Generate unique alert ID
-   */
-  private generateAlertId(): string {
-    return `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
   /**

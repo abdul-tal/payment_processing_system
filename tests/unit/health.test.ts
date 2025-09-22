@@ -1,15 +1,24 @@
 import request from 'supertest';
-import { createApp } from '../../src/app';
+import { createTestApp } from '../../src/testApp';
+import { Application } from 'express';
 
 describe('Health Check', () => {
-  let app: any;
+  let app: Application;
 
   beforeAll(() => {
-    app = createApp();
+    // Set test environment variable for API key
+    process.env['DEFAULT_API_KEY'] = 'test-api-key-for-testing-purposes-only';
+    app = createTestApp;
   });
 
   it('should return health status', async () => {
-    const response = await request(app).get('/health');
+    const response = await request(app)
+      .get('/api/v1/health')
+      .set(
+        'x-api-key',
+        process.env['DEFAULT_API_KEY'] ||
+          'test-api-key-for-testing-purposes-only'
+      );
 
     // In test environment, database is disconnected so expect 503
     expect(response.status).toBe(503);

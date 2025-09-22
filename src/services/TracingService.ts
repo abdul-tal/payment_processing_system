@@ -29,7 +29,7 @@ export class TracingService {
   ): Span {
     const span = this.tracer.startSpan(name, {
       kind: kind || SpanKind.INTERNAL,
-      attributes,
+      attributes: attributes || {},
     });
 
     return span;
@@ -65,7 +65,7 @@ export class TracingService {
     const spanName = table ? `${operation} ${table}` : operation;
     return this.startSpan(spanName, {
       [SemanticAttributes.DB_OPERATION]: operation,
-      [SemanticAttributes.DB_SQL_TABLE]: table,
+      [SemanticAttributes.DB_SQL_TABLE]: table || 'unknown',
       [SemanticAttributes.DB_SYSTEM]: 'postgresql',
       ...attributes,
     });
@@ -83,9 +83,9 @@ export class TracingService {
   ): Span {
     return this.startSpan(`Payment ${operation}`, {
       'payment.operation': operation,
-      'payment.method': paymentMethod,
-      'payment.amount': amount,
-      'payment.currency': currency,
+      'payment.method': paymentMethod || 'unknown',
+      'payment.amount': amount || 0,
+      'payment.currency': currency || 'USD',
       ...attributes,
     });
   }
@@ -100,7 +100,7 @@ export class TracingService {
   ): Span {
     return this.startSpan(`Subscription ${operation}`, {
       'subscription.operation': operation,
-      'subscription.id': subscriptionId,
+      'subscription.id': subscriptionId || 'unknown',
       ...attributes,
     });
   }
@@ -115,7 +115,7 @@ export class TracingService {
   ): Span {
     return this.startSpan(`Webhook ${operation}`, {
       'webhook.operation': operation,
-      'webhook.event_type': eventType,
+      'webhook.event_type': eventType || 'unknown',
       ...attributes,
     });
   }
@@ -221,7 +221,7 @@ export class TracingService {
       name,
       {
         kind: kind || SpanKind.INTERNAL,
-        attributes,
+        attributes: attributes || {},
       },
       context.active()
     );

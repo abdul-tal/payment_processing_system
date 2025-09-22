@@ -7,6 +7,9 @@ import {
 } from '../../src/services/paymentService';
 import { APIControllers } from 'authorizenet';
 
+// Unmock the paymentService for this test file
+jest.unmock('../../src/services/paymentService');
+
 // Mock the authorizenet module
 jest.mock('authorizenet', () => ({
   APIContracts: {

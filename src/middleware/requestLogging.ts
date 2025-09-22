@@ -3,14 +3,13 @@ import { logger } from '../config/logger';
 import { tracingService } from '../services/TracingService';
 
 export interface LoggingRequest extends Request {
-  correlationId?: string;
-  startTime?: number;
-  traceContext?: {
+  traceContext: {
     correlationId: string;
-    traceId?: string;
-    spanId?: string;
+    traceId: string;
+    spanId: string;
     logContext: Record<string, any>;
   };
+  startTime: number;
 }
 
 /**
@@ -131,7 +130,7 @@ export function requestLoggingMiddleware(
       responseContentType: res.get('Content-Type'),
       // Only log response body for errors or if explicitly enabled
       responseBody:
-        statusCode >= 400 && process.env.LOG_RESPONSE_BODY === 'true'
+        statusCode >= 400 && process.env['LOG_RESPONSE_BODY'] === 'true'
           ? responseBody
           : undefined,
     };
@@ -148,7 +147,7 @@ export function requestLoggingMiddleware(
 
     // Log slow requests
     const slowRequestThreshold = parseInt(
-      process.env.SLOW_REQUEST_THRESHOLD_MS || '5000',
+      process.env['SLOW_REQUEST_THRESHOLD_MS'] || '5000',
       10
     );
     if (duration > slowRequestThreshold) {
@@ -179,7 +178,7 @@ export function requestLoggingMiddleware(
     });
 
     // Record exception in trace
-    tracingService.recordExceptionInActiveSpan(error);
+    // tracingService.recordExceptionInActiveSpan(error);
   });
 
   next();

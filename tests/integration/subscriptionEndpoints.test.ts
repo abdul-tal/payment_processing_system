@@ -1,34 +1,153 @@
 import request from 'supertest';
-import { createApp } from '../../src/app';
-import { AppDataSource } from '../../src/config/database';
-import {
-  Subscription,
-  SubscriptionStatus,
-  BillingInterval,
-} from '../../src/entities/Subscription';
-import { Express } from 'express';
+import { Application } from 'express';
+import testApp from '../../src/testApp';
+import { SubscriptionStatus } from '../../src/entities/Subscription';
+
+// Mock webhook queue to avoid Redis connections in tests
+jest.mock('../../src/services/webhookQueue', () =>
+  require('../../src/services/testWebhookQueue')
+);
+
+// Create global mock state that can be reset between tests
+const mockSubscriptions = new Map();
+let mockIdCounter = 1;
+
+const resetMockState = () => {
+  mockSubscriptions.clear();
+  mockIdCounter = 1;
+};
+
+// Mock SubscriptionService to avoid database calls
+jest.mock('../../src/services/SubscriptionService', () => {
+  return {
+    SubscriptionService: jest.fn().mockImplementation(() => {
+      return {
+        createSubscription: jest.fn().mockImplementation(async request => {
+          const id = `mock-id-${mockIdCounter++}`;
+          const subscription = {
+            id,
+            subscription_id: `sub_${Date.now()}`,
+            customer_email: request.customer_email,
+            customer_name: request.customer_name || '',
+            plan_name: request.plan_name,
+            amount: request.amount,
+            currency: request.currency || 'USD',
+            billing_interval: request.billing_interval,
+            status: 'active',
+            created_at: new Date(),
+            updated_at: new Date(),
+            start_date: new Date(),
+            next_billing_date: new Date(),
+            billing_cycles_completed: 0,
+            metadata: request.metadata || {},
+          };
+          mockSubscriptions.set(id, subscription);
+          return subscription;
+        }),
+
+        getSubscription: jest.fn().mockImplementation(async id => {
+          return mockSubscriptions.get(id) || null;
+        }),
+
+        updateSubscription: jest
+          .fn()
+          .mockImplementation(async (id, request) => {
+            const existing = mockSubscriptions.get(id);
+            if (!existing) return null;
+
+            const updated = {
+              ...existing,
+              plan_name:
+                request.plan_name !== undefined
+                  ? request.plan_name
+                  : existing.plan_name,
+              amount:
+                request.amount !== undefined ? request.amount : existing.amount,
+              billing_interval:
+                request.billing_interval !== undefined
+                  ? request.billing_interval
+                  : existing.billing_interval,
+              status:
+                request.status !== undefined ? request.status : existing.status,
+              metadata:
+                request.metadata !== undefined
+                  ? request.metadata
+                  : existing.metadata,
+              updated_at: new Date(),
+            };
+            mockSubscriptions.set(id, updated);
+            return updated;
+          }),
+
+        cancelSubscription: jest.fn().mockImplementation(async (id, reason) => {
+          const existing = mockSubscriptions.get(id);
+          if (!existing) return null;
+
+          const cancelled = {
+            ...existing,
+            status: 'cancelled',
+            cancelled_at: new Date(),
+            end_date: new Date(),
+            cancellation_reason: reason || 'User requested cancellation',
+            updated_at: new Date(),
+          };
+          mockSubscriptions.set(id, cancelled);
+          return cancelled;
+        }),
+
+        getSubscriptionsByCustomer: jest
+          .fn()
+          .mockImplementation(async customerEmail => {
+            return Array.from(mockSubscriptions.values()).filter(
+              sub => sub.customer_email === customerEmail
+            );
+          }),
+      };
+    }),
+  };
+});
+
+// Mock PaymentService to avoid Authorize.Net calls
+jest.mock('../../src/services/PaymentService', () => ({
+  PaymentService: jest.fn().mockImplementation(() => ({
+    createSubscription: jest.fn().mockResolvedValue({
+      success: true,
+      subscriptionId: `sub_${Date.now()}`,
+      message: 'Subscription created successfully',
+    }),
+  })),
+}));
+
+let app: Application;
+
+beforeAll(async () => {
+  app = testApp;
+});
+
+afterAll(async () => {
+  // Clean up any remaining mocks
+  jest.clearAllMocks();
+});
 
 describe('Subscription Endpoints Integration Tests', () => {
-  let app: Express;
-
-  beforeAll(async () => {
-    // Initialize test database connection
-    if (!AppDataSource.isInitialized) {
-      await AppDataSource.initialize();
-    }
-    app = createApp();
-  });
-
-  afterAll(async () => {
-    if (AppDataSource.isInitialized) {
-      await AppDataSource.destroy();
-    }
-  });
+  // Set the environment variable to ensure consistency
+  process.env['DEFAULT_API_KEY'] = 'test-api-key-for-testing-purposes-only';
+  const API_KEY = process.env['DEFAULT_API_KEY'];
+  const headers = {
+    'x-api-key': API_KEY,
+    'Content-Type': 'application/json',
+  };
 
   beforeEach(async () => {
-    // Clean up subscriptions table before each test
-    const subscriptionRepository = AppDataSource.getRepository(Subscription);
-    await subscriptionRepository.clear();
+    // Clear all mocks before each test
+    jest.clearAllMocks();
+
+    // Reset mock state to avoid data persistence between tests
+    resetMockState();
+
+    // Reset the app to get fresh service instances
+    delete require.cache[require.resolve('../../src/testApp')];
+    app = require('../../src/testApp').default;
   });
 
   describe('POST /api/v1/subscriptions', () => {
@@ -56,6 +175,7 @@ describe('Subscription Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/subscriptions')
+        .set(headers)
         .send(subscriptionData)
         .expect(201);
 
@@ -79,6 +199,7 @@ describe('Subscription Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/subscriptions')
+        .set(headers)
         .send(incompleteData)
         .expect(400);
 
@@ -101,6 +222,7 @@ describe('Subscription Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/subscriptions')
+        .set(headers)
         .send(invalidEmailData)
         .expect(400);
 
@@ -122,6 +244,7 @@ describe('Subscription Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/subscriptions')
+        .set(headers)
         .send(invalidIntervalData)
         .expect(400);
 
@@ -137,36 +260,50 @@ describe('Subscription Endpoints Integration Tests', () => {
 
   describe('GET /api/v1/subscriptions/:id', () => {
     it('should retrieve a subscription by ID', async () => {
-      // First create a subscription
-      const subscriptionRepository = AppDataSource.getRepository(Subscription);
-      const subscription = new Subscription();
-      subscription.subscription_id = 'sub_test_123';
-      subscription.customer_email = 'test@example.com';
-      subscription.customer_name = 'Test User';
-      subscription.plan_name = 'Premium Plan';
-      subscription.amount = 29.99;
-      subscription.currency = 'USD';
-      subscription.billing_interval = BillingInterval.MONTHLY;
-      subscription.status = SubscriptionStatus.ACTIVE;
-      subscription.start_date = new Date();
-      subscription.next_billing_date = new Date();
-      subscription.billing_cycles_completed = 0;
+      // Create a subscription first to get a valid ID
+      const subscriptionData = {
+        customer_email: 'test@example.com',
+        customer_name: 'Test User',
+        plan_name: 'Basic Plan',
+        amount: 19.99,
+        currency: 'USD',
+        billing_interval: 'monthly',
+        card_number: '4111111111111111',
+        expiry_month: '12',
+        expiry_year: '2025',
+        cvv: '123',
+        billing_address: {
+          street: '123 Test St',
+          city: 'Test City',
+          state: 'TS',
+          zip: '12345',
+          country: 'US',
+        },
+      };
 
-      const savedSubscription = await subscriptionRepository.save(subscription);
+      const createResponse = await request(app)
+        .post('/api/v1/subscriptions')
+        .set(headers)
+        .send(subscriptionData)
+        .expect(201);
+
+      const subscriptionId = createResponse.body.data.id;
 
       const response = await request(app)
-        .get(`/api/v1/subscriptions/${savedSubscription.id}`)
+        .get(`/api/v1/subscriptions/${subscriptionId}`)
+        .set(headers)
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.id).toBe(savedSubscription.id);
-      expect(response.body.data.subscription_id).toBe('sub_test_123');
+      expect(response.body.data.id).toBe(subscriptionId);
       expect(response.body.data.customer_email).toBe('test@example.com');
+      expect(response.body.data.plan_name).toBe('Basic Plan');
     });
 
     it('should return 404 for non-existent subscription', async () => {
       const response = await request(app)
         .get('/api/v1/subscriptions/non-existent-id')
+        .set(headers)
         .expect(404);
 
       expect(response.body.success).toBe(false);
@@ -176,22 +313,34 @@ describe('Subscription Endpoints Integration Tests', () => {
 
   describe('PUT /api/v1/subscriptions/:id', () => {
     it('should update a subscription', async () => {
-      // First create a subscription
-      const subscriptionRepository = AppDataSource.getRepository(Subscription);
-      const subscription = new Subscription();
-      subscription.subscription_id = 'sub_test_123';
-      subscription.customer_email = 'test@example.com';
-      subscription.plan_name = 'Basic Plan';
-      subscription.amount = 19.99;
-      subscription.currency = 'USD';
-      subscription.billing_interval = BillingInterval.MONTHLY;
-      subscription.status = SubscriptionStatus.ACTIVE;
-      subscription.start_date = new Date();
-      subscription.next_billing_date = new Date();
-      subscription.billing_cycles_completed = 0;
-      subscription.metadata = {};
+      // Create a subscription first
+      const subscriptionData = {
+        customer_email: 'test@example.com',
+        customer_name: 'Test User',
+        plan_name: 'Basic Plan',
+        amount: 19.99,
+        currency: 'USD',
+        billing_interval: 'monthly',
+        card_number: '4111111111111111',
+        expiry_month: '12',
+        expiry_year: '2025',
+        cvv: '123',
+        billing_address: {
+          street: '123 Test St',
+          city: 'Test City',
+          state: 'TS',
+          zip: '12345',
+          country: 'US',
+        },
+      };
 
-      const savedSubscription = await subscriptionRepository.save(subscription);
+      const createResponse = await request(app)
+        .post('/api/v1/subscriptions')
+        .set(headers)
+        .send(subscriptionData)
+        .expect(201);
+
+      const subscriptionId = createResponse.body.data.id;
 
       const updateData = {
         plan_name: 'Premium Plan',
@@ -200,7 +349,8 @@ describe('Subscription Endpoints Integration Tests', () => {
       };
 
       const response = await request(app)
-        .put(`/api/v1/subscriptions/${savedSubscription.id}`)
+        .put(`/api/v1/subscriptions/${subscriptionId}`)
+        .set(headers)
         .send(updateData)
         .expect(200);
 
@@ -217,6 +367,7 @@ describe('Subscription Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .put('/api/v1/subscriptions/non-existent-id')
+        .set(headers)
         .send(updateData)
         .expect(404);
 
@@ -227,38 +378,51 @@ describe('Subscription Endpoints Integration Tests', () => {
 
   describe('DELETE /api/v1/subscriptions/:id', () => {
     it('should cancel a subscription', async () => {
-      // First create a subscription
-      const subscriptionRepository = AppDataSource.getRepository(Subscription);
-      const subscription = new Subscription();
-      subscription.subscription_id = 'sub_test_123';
-      subscription.customer_email = 'test@example.com';
-      subscription.plan_name = 'Premium Plan';
-      subscription.amount = 29.99;
-      subscription.currency = 'USD';
-      subscription.billing_interval = BillingInterval.MONTHLY;
-      subscription.status = SubscriptionStatus.ACTIVE;
-      subscription.start_date = new Date();
-      subscription.next_billing_date = new Date();
-      subscription.billing_cycles_completed = 0;
+      // Create a subscription first
+      const subscriptionData = {
+        customer_email: 'test@example.com',
+        customer_name: 'Test User',
+        plan_name: 'Basic Plan',
+        amount: 19.99,
+        currency: 'USD',
+        billing_interval: 'monthly',
+        card_number: '4111111111111111',
+        expiry_month: '12',
+        expiry_year: '2025',
+        cvv: '123',
+        billing_address: {
+          street: '123 Test St',
+          city: 'Test City',
+          state: 'TS',
+          zip: '12345',
+          country: 'US',
+        },
+      };
 
-      const savedSubscription = await subscriptionRepository.save(subscription);
+      const createResponse = await request(app)
+        .post('/api/v1/subscriptions')
+        .set(headers)
+        .send(subscriptionData)
+        .expect(201);
+
+      const subscriptionId = createResponse.body.data.id;
 
       const response = await request(app)
-        .delete(`/api/v1/subscriptions/${savedSubscription.id}`)
-        .send({ reason: 'User requested cancellation' })
+        .delete(`/api/v1/subscriptions/${subscriptionId}`)
+        .set(headers)
+        .send({ reason: 'Test cancellation' })
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.status).toBe('cancelled');
+      expect(response.body.data.status).toBe(SubscriptionStatus.CANCELLED);
+      expect(response.body.data.cancellation_reason).toBe('Test cancellation');
       expect(response.body.data.cancelled_at).toBeDefined();
-      expect(response.body.data.cancellation_reason).toBe(
-        'User requested cancellation'
-      );
     });
 
     it('should return 404 for non-existent subscription cancellation', async () => {
       const response = await request(app)
         .delete('/api/v1/subscriptions/non-existent-id')
+        .set(headers)
         .send({ reason: 'Test cancellation' })
         .expect(404);
 
@@ -269,37 +433,63 @@ describe('Subscription Endpoints Integration Tests', () => {
 
   describe('GET /api/v1/subscriptions/customer/:email', () => {
     it('should retrieve subscriptions by customer email', async () => {
-      // Create multiple subscriptions for the same customer
-      const subscriptionRepository = AppDataSource.getRepository(Subscription);
+      // Create multiple subscriptions for the same customer using the API
+      const subscriptionData1 = {
+        customer_email: 'test@example.com',
+        customer_name: 'Test User',
+        plan_name: 'Basic Plan',
+        amount: 19.99,
+        currency: 'USD',
+        billing_interval: 'monthly',
+        card_number: '4111111111111111',
+        expiry_month: '12',
+        expiry_year: '2025',
+        cvv: '123',
+        billing_address: {
+          street: '123 Test St',
+          city: 'Test City',
+          state: 'TS',
+          zip: '12345',
+          country: 'US',
+        },
+      };
 
-      const subscription1 = new Subscription();
-      subscription1.subscription_id = 'sub_test_1';
-      subscription1.customer_email = 'test@example.com';
-      subscription1.plan_name = 'Basic Plan';
-      subscription1.amount = 19.99;
-      subscription1.currency = 'USD';
-      subscription1.billing_interval = BillingInterval.MONTHLY;
-      subscription1.status = SubscriptionStatus.ACTIVE;
-      subscription1.start_date = new Date();
-      subscription1.next_billing_date = new Date();
-      subscription1.billing_cycles_completed = 0;
+      const subscriptionData2 = {
+        customer_email: 'test@example.com',
+        customer_name: 'Test User',
+        plan_name: 'Premium Plan',
+        amount: 29.99,
+        currency: 'USD',
+        billing_interval: 'monthly',
+        card_number: '4111111111111111',
+        expiry_month: '12',
+        expiry_year: '2025',
+        cvv: '123',
+        billing_address: {
+          street: '123 Test St',
+          city: 'Test City',
+          state: 'TS',
+          zip: '12345',
+          country: 'US',
+        },
+      };
 
-      const subscription2 = new Subscription();
-      subscription2.subscription_id = 'sub_test_2';
-      subscription2.customer_email = 'test@example.com';
-      subscription2.plan_name = 'Premium Plan';
-      subscription2.amount = 29.99;
-      subscription2.currency = 'USD';
-      subscription2.billing_interval = BillingInterval.MONTHLY;
-      subscription2.status = SubscriptionStatus.CANCELLED;
-      subscription2.start_date = new Date();
-      subscription2.next_billing_date = new Date();
-      subscription2.billing_cycles_completed = 2;
+      // Create both subscriptions
+      await request(app)
+        .post('/api/v1/subscriptions')
+        .set(headers)
+        .send(subscriptionData1)
+        .expect(201);
 
-      await subscriptionRepository.save([subscription1, subscription2]);
+      await request(app)
+        .post('/api/v1/subscriptions')
+        .set(headers)
+        .send(subscriptionData2)
+        .expect(201);
 
       const response = await request(app)
         .get('/api/v1/subscriptions/customer/test@example.com')
+        .set(headers)
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -312,6 +502,7 @@ describe('Subscription Endpoints Integration Tests', () => {
     it('should return 400 for invalid email format', async () => {
       const response = await request(app)
         .get('/api/v1/subscriptions/customer/invalid-email')
+        .set(headers)
         .expect(400);
 
       expect(response.body.success).toBe(false);
@@ -321,6 +512,7 @@ describe('Subscription Endpoints Integration Tests', () => {
     it('should return empty array for customer with no subscriptions', async () => {
       const response = await request(app)
         .get('/api/v1/subscriptions/customer/nonexistent@example.com')
+        .set(headers)
         .expect(200);
 
       expect(response.body.success).toBe(true);

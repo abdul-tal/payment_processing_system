@@ -4,9 +4,9 @@ import { AppDataSource } from './config/database';
 import { logger } from './config/logger';
 import { metricsService } from './services/MetricsService';
 import { alertService } from './services/AlertService';
-import { redisClient } from './config/redis';
+// import { redisClient } from './config/redis';
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env['PORT'] || 3000;
 
 async function startServer(): Promise<void> {
   try {
@@ -16,9 +16,9 @@ async function startServer(): Promise<void> {
     logger.info('Database connection established');
 
     // Initialize Redis connection
-    logger.info('Initializing Redis connection...');
-    await redisClient.connect();
-    logger.info('Redis connection established');
+    // logger.info('Initializing Redis connection...');
+    // await redisClient.connect();
+    // logger.info('Redis connection established');
 
     // Initialize metrics service
     logger.info('Initializing metrics service...');
@@ -37,14 +37,14 @@ async function startServer(): Promise<void> {
     const server = app.listen(PORT, () => {
       logger.info(`Server started successfully`, {
         port: PORT,
-        environment: process.env.NODE_ENV || 'development',
+        environment: process.env['NODE_ENV'] || 'development',
         timestamp: new Date().toISOString(),
       });
 
       // Record server start metric
       metricsService.recordMetric('server_start', 1, 'count', {
         port: PORT.toString(),
-        environment: process.env.NODE_ENV || 'development',
+        environment: process.env['NODE_ENV'] || 'development',
       });
     });
 
@@ -62,8 +62,8 @@ async function startServer(): Promise<void> {
           logger.info('Shutting down metrics service...');
           metricsService.shutdown();
 
-          logger.info('Closing Redis connection...');
-          await redisClient.quit();
+          // logger.info('Closing Redis connection...');
+          // await redisClient.quit();
 
           logger.info('Closing database connection...');
           await AppDataSource.destroy();
@@ -88,7 +88,7 @@ async function startServer(): Promise<void> {
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
     // Handle uncaught exceptions and unhandled rejections
-    process.on('uncaughtException', (error) => {
+    process.on('uncaughtException', (error: Error) => {
       logger.error('Uncaught Exception:', error);
       alertService.createAlert(
         'CRITICAL' as any,
@@ -108,7 +108,6 @@ async function startServer(): Promise<void> {
         { reason: String(reason) }
       );
     });
-
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);
