@@ -9,8 +9,9 @@ import { requestLoggingMiddleware } from './middleware/requestLogging';
 import { errorHandler } from './middleware/errorHandler';
 import { validationErrorHandler } from './middleware/validation';
 import { logger } from './config/logger';
-import { metricsService } from './services/MetricsService';
-import { alertService } from './services/AlertService';
+// Import services for initialization
+import './services/MetricsService';
+import './services/AlertService';
 import paymentRoutes from './routes/payments';
 import paymentsV1Routes from './routes/paymentsV1';
 import webhookRoutes from './routes/webhookRoutes';

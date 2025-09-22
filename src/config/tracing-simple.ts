@@ -7,10 +7,11 @@ import { logger } from './logger';
 export function initializeSimpleTracing(): void {
   try {
     logger.info('Starting simplified OpenTelemetry tracing...');
-    
+
     const serviceName = process.env['SERVICE_NAME'] || 'payment-backend';
-    const jaegerEndpoint = process.env['JAEGER_ENDPOINT'] || 'http://localhost:14268/api/traces';
-    
+    const jaegerEndpoint =
+      process.env['JAEGER_ENDPOINT'] || 'http://localhost:14268/api/traces';
+
     const jaegerExporter = new JaegerExporter({
       endpoint: jaegerEndpoint,
     });
@@ -32,7 +33,7 @@ export function initializeSimpleTracing(): void {
     sdk.start();
     logger.info('Simplified tracing initialized successfully', {
       serviceName,
-      jaegerEndpoint
+      jaegerEndpoint,
     });
   } catch (error) {
     logger.error('Failed to initialize simplified tracing:', error);

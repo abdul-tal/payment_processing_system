@@ -7,8 +7,8 @@ export interface PerformanceMetric {
   unit: string;
   timestamp: Date;
   labels?: Record<string, string>;
-  traceId?: string;
-  spanId?: string;
+  traceId?: string | undefined;
+  spanId?: string | undefined;
 }
 
 export interface SystemMetrics {
@@ -25,8 +25,8 @@ export interface RequestMetrics {
   duration: number;
   responseSize: number;
   timestamp: Date;
-  traceId?: string;
-  correlationId?: string;
+  traceId?: string | undefined;
+  correlationId?: string | undefined;
 }
 
 export interface DatabaseMetrics {
@@ -34,18 +34,18 @@ export interface DatabaseMetrics {
   duration: number;
   success: boolean;
   timestamp: Date;
-  traceId?: string;
+  traceId?: string | undefined;
 }
 
 export interface ExternalApiMetrics {
   service: string;
   endpoint: string;
   method: string;
-  statusCode?: number;
+  statusCode?: number | undefined;
   duration: number;
   success: boolean;
   timestamp: Date;
-  traceId?: string;
+  traceId?: string | undefined;
 }
 
 /**
@@ -109,9 +109,13 @@ export class MetricsService {
       value,
       unit,
       timestamp: new Date(),
-      labels,
-      traceId: tracingService.getCurrentTraceId(),
-      spanId: tracingService.getCurrentSpanId(),
+      ...(labels && { labels }),
+      ...(tracingService.getCurrentTraceId() && {
+        traceId: tracingService.getCurrentTraceId(),
+      }),
+      ...(tracingService.getCurrentSpanId() && {
+        spanId: tracingService.getCurrentSpanId(),
+      }),
     };
 
     this.metrics.push(metric);
@@ -153,8 +157,10 @@ export class MetricsService {
       duration,
       responseSize,
       timestamp: new Date(),
-      traceId: tracingService.getCurrentTraceId(),
-      correlationId,
+      ...(tracingService.getCurrentTraceId() && {
+        traceId: tracingService.getCurrentTraceId(),
+      }),
+      ...(correlationId && { correlationId }),
     };
 
     this.requestMetrics.push(metric);
@@ -189,7 +195,9 @@ export class MetricsService {
       duration,
       success,
       timestamp: new Date(),
-      traceId: tracingService.getCurrentTraceId(),
+      ...(tracingService.getCurrentTraceId() && {
+        traceId: tracingService.getCurrentTraceId(),
+      }),
     };
 
     this.databaseMetrics.push(metric);
@@ -219,11 +227,13 @@ export class MetricsService {
       service,
       endpoint,
       method,
-      statusCode,
       duration,
       success,
       timestamp: new Date(),
-      traceId: tracingService.getCurrentTraceId(),
+      ...(statusCode !== undefined && { statusCode }),
+      ...(tracingService.getCurrentTraceId() && {
+        traceId: tracingService.getCurrentTraceId(),
+      }),
     };
 
     this.externalApiMetrics.push(metric);
@@ -268,46 +278,67 @@ export class MetricsService {
     const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
 
     // Request metrics summary
-    const recentRequests = this.requestMetrics.filter(m => m.timestamp > cutoff);
+    const recentRequests = this.requestMetrics.filter(
+      m => m.timestamp > cutoff
+    );
     const requestErrors = recentRequests.filter(m => m.statusCode >= 400);
     const slowRequests = recentRequests.filter(m => m.duration > 5000);
-    const avgRequestDuration = recentRequests.length > 0
-      ? recentRequests.reduce((sum, m) => sum + m.duration, 0) / recentRequests.length
-      : 0;
+    const avgRequestDuration =
+      recentRequests.length > 0
+        ? recentRequests.reduce((sum, m) => sum + m.duration, 0) /
+          recentRequests.length
+        : 0;
 
     // Database metrics summary
-    const recentDbQueries = this.databaseMetrics.filter(m => m.timestamp > cutoff);
+    const recentDbQueries = this.databaseMetrics.filter(
+      m => m.timestamp > cutoff
+    );
     const dbErrors = recentDbQueries.filter(m => !m.success);
     const slowQueries = recentDbQueries.filter(m => m.duration > 1000);
-    const avgDbDuration = recentDbQueries.length > 0
-      ? recentDbQueries.reduce((sum, m) => sum + m.duration, 0) / recentDbQueries.length
-      : 0;
+    const avgDbDuration =
+      recentDbQueries.length > 0
+        ? recentDbQueries.reduce((sum, m) => sum + m.duration, 0) /
+          recentDbQueries.length
+        : 0;
 
     // External API metrics summary
-    const recentApiCalls = this.externalApiMetrics.filter(m => m.timestamp > cutoff);
+    const recentApiCalls = this.externalApiMetrics.filter(
+      m => m.timestamp > cutoff
+    );
     const apiErrors = recentApiCalls.filter(m => !m.success);
     const slowApiCalls = recentApiCalls.filter(m => m.duration > 10000);
-    const avgApiDuration = recentApiCalls.length > 0
-      ? recentApiCalls.reduce((sum, m) => sum + m.duration, 0) / recentApiCalls.length
-      : 0;
+    const avgApiDuration =
+      recentApiCalls.length > 0
+        ? recentApiCalls.reduce((sum, m) => sum + m.duration, 0) /
+          recentApiCalls.length
+        : 0;
 
     return {
       requests: {
         total: recentRequests.length,
         avgDuration: Math.round(avgRequestDuration),
-        errorRate: recentRequests.length > 0 ? requestErrors.length / recentRequests.length : 0,
+        errorRate:
+          recentRequests.length > 0
+            ? requestErrors.length / recentRequests.length
+            : 0,
         slowRequests: slowRequests.length,
       },
       database: {
         total: recentDbQueries.length,
         avgDuration: Math.round(avgDbDuration),
-        errorRate: recentDbQueries.length > 0 ? dbErrors.length / recentDbQueries.length : 0,
+        errorRate:
+          recentDbQueries.length > 0
+            ? dbErrors.length / recentDbQueries.length
+            : 0,
         slowQueries: slowQueries.length,
       },
       externalApi: {
         total: recentApiCalls.length,
         avgDuration: Math.round(avgApiDuration),
-        errorRate: recentApiCalls.length > 0 ? apiErrors.length / recentApiCalls.length : 0,
+        errorRate:
+          recentApiCalls.length > 0
+            ? apiErrors.length / recentApiCalls.length
+            : 0,
         slowCalls: slowApiCalls.length,
       },
       system: this.getLatestSystemMetrics(),
@@ -326,15 +357,28 @@ export class MetricsService {
     };
 
     // Record individual metrics
-    this.recordMetric('memory_heap_used', systemMetrics.memoryUsage.heapUsed, 'bytes');
-    this.recordMetric('memory_heap_total', systemMetrics.memoryUsage.heapTotal, 'bytes');
+    this.recordMetric(
+      'memory_heap_used',
+      systemMetrics.memoryUsage.heapUsed,
+      'bytes'
+    );
+    this.recordMetric(
+      'memory_heap_total',
+      systemMetrics.memoryUsage.heapTotal,
+      'bytes'
+    );
     this.recordMetric('memory_rss', systemMetrics.memoryUsage.rss, 'bytes');
     this.recordMetric('cpu_user', systemMetrics.cpuUsage.user, 'microseconds');
-    this.recordMetric('cpu_system', systemMetrics.cpuUsage.system, 'microseconds');
+    this.recordMetric(
+      'cpu_system',
+      systemMetrics.cpuUsage.system,
+      'microseconds'
+    );
     this.recordMetric('uptime', systemMetrics.uptime, 'seconds');
 
     // Check for memory issues
-    const memoryUsagePercent = systemMetrics.memoryUsage.heapUsed / systemMetrics.memoryUsage.heapTotal;
+    const memoryUsagePercent =
+      systemMetrics.memoryUsage.heapUsed / systemMetrics.memoryUsage.heapTotal;
     if (memoryUsagePercent > 0.8) {
       logger.warn('High memory usage detected', {
         event: 'high_memory_usage',
@@ -375,7 +419,8 @@ export class MetricsService {
     }
 
     // Check for large responses
-    if (metric.responseSize > 1024 * 1024) { // 1MB
+    if (metric.responseSize > 1024 * 1024) {
+      // 1MB
       logger.warn('Large response detected', {
         event: 'large_response',
         endpoint: metric.endpoint,
@@ -429,18 +474,30 @@ export class MetricsService {
    * Clean up old metrics to prevent memory issues
    */
   private cleanupOldMetrics(): void {
-    const cutoff = new Date(Date.now() - this.metricsRetentionHours * 60 * 60 * 1000);
+    const cutoff = new Date(
+      Date.now() - this.metricsRetentionHours * 60 * 60 * 1000
+    );
 
-    const beforeCount = this.metrics.length + this.requestMetrics.length + 
-                       this.databaseMetrics.length + this.externalApiMetrics.length;
+    const beforeCount =
+      this.metrics.length +
+      this.requestMetrics.length +
+      this.databaseMetrics.length +
+      this.externalApiMetrics.length;
 
     this.metrics = this.metrics.filter(m => m.timestamp > cutoff);
     this.requestMetrics = this.requestMetrics.filter(m => m.timestamp > cutoff);
-    this.databaseMetrics = this.databaseMetrics.filter(m => m.timestamp > cutoff);
-    this.externalApiMetrics = this.externalApiMetrics.filter(m => m.timestamp > cutoff);
+    this.databaseMetrics = this.databaseMetrics.filter(
+      m => m.timestamp > cutoff
+    );
+    this.externalApiMetrics = this.externalApiMetrics.filter(
+      m => m.timestamp > cutoff
+    );
 
-    const afterCount = this.metrics.length + this.requestMetrics.length + 
-                      this.databaseMetrics.length + this.externalApiMetrics.length;
+    const afterCount =
+      this.metrics.length +
+      this.requestMetrics.length +
+      this.databaseMetrics.length +
+      this.externalApiMetrics.length;
 
     if (beforeCount > afterCount) {
       logger.debug('Cleaned up old metrics', {
@@ -455,13 +512,16 @@ export class MetricsService {
    * Enforce maximum metrics count to prevent memory issues
    */
   private enforceMetricsLimit(): void {
-    const totalMetrics = this.metrics.length + this.requestMetrics.length + 
-                        this.databaseMetrics.length + this.externalApiMetrics.length;
+    const totalMetrics =
+      this.metrics.length +
+      this.requestMetrics.length +
+      this.databaseMetrics.length +
+      this.externalApiMetrics.length;
 
     if (totalMetrics > this.maxMetricsCount) {
       // Remove oldest metrics from each category
       const removeCount = Math.ceil((totalMetrics - this.maxMetricsCount) / 4);
-      
+
       this.metrics = this.metrics.slice(removeCount);
       this.requestMetrics = this.requestMetrics.slice(removeCount);
       this.databaseMetrics = this.databaseMetrics.slice(removeCount);

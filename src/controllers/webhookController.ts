@@ -27,15 +27,11 @@ export class WebhookController {
     req: WebhookRequest,
     res: Response
   ): Promise<void> => {
-    const span = tracingService.startWebhookSpan(
-      'receive',
-      undefined,
-      {
-        'webhook.source': 'authorize_net',
-        'http.method': req.method,
-        'http.url': req.url,
-      }
-    );
+    const span = tracingService.startWebhookSpan('receive', undefined, {
+      'webhook.source': 'authorize_net',
+      'http.method': req.method,
+      'http.url': req.url,
+    });
 
     try {
       await tracingService.executeInSpan(span, async () => {

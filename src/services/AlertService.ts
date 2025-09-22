@@ -48,18 +48,35 @@ export class AlertService {
   private static instance: AlertService;
   private alerts: Alert[] = [];
   private activeAlerts = new Map<string, Alert>();
-  private checkInterval?: NodeJS.Timeout;
+  private checkInterval?: ReturnType<typeof setTimeout>;
   private config: BottleneckDetectionConfig;
 
   constructor() {
     this.config = {
-      responseTimeThreshold: parseInt(process.env.RESPONSE_TIME_THRESHOLD || '5000', 10),
+      responseTimeThreshold: parseInt(
+        process.env.RESPONSE_TIME_THRESHOLD || '5000',
+        10
+      ),
       errorRateThreshold: parseFloat(process.env.ERROR_RATE_THRESHOLD || '0.1'),
-      memoryUsageThreshold: parseFloat(process.env.MEMORY_USAGE_THRESHOLD || '0.8'),
-      databaseQueryThreshold: parseInt(process.env.DB_QUERY_THRESHOLD || '1000', 10),
-      externalApiThreshold: parseInt(process.env.EXTERNAL_API_THRESHOLD || '10000', 10),
-      queueBacklogThreshold: parseInt(process.env.QUEUE_BACKLOG_THRESHOLD || '100', 10),
-      checkIntervalMs: parseInt(process.env.BOTTLENECK_CHECK_INTERVAL || '60000', 10),
+      memoryUsageThreshold: parseFloat(
+        process.env.MEMORY_USAGE_THRESHOLD || '0.8'
+      ),
+      databaseQueryThreshold: parseInt(
+        process.env.DB_QUERY_THRESHOLD || '1000',
+        10
+      ),
+      externalApiThreshold: parseInt(
+        process.env.EXTERNAL_API_THRESHOLD || '10000',
+        10
+      ),
+      queueBacklogThreshold: parseInt(
+        process.env.QUEUE_BACKLOG_THRESHOLD || '100',
+        10
+      ),
+      checkIntervalMs: parseInt(
+        process.env.BOTTLENECK_CHECK_INTERVAL || '60000',
+        10
+      ),
     };
   }
 
@@ -252,7 +269,9 @@ export class AlertService {
 
       // Check memory usage bottlenecks
       if (summary.system) {
-        const memoryUsagePercent = summary.system.memoryUsage.heapUsed / summary.system.memoryUsage.heapTotal;
+        const memoryUsagePercent =
+          summary.system.memoryUsage.heapUsed /
+          summary.system.memoryUsage.heapTotal;
         if (memoryUsagePercent > this.config.memoryUsageThreshold) {
           this.createAlert(
             AlertType.HIGH_MEMORY_USAGE,
@@ -279,7 +298,10 @@ export class AlertService {
   private detectOverallBottlenecks(summary: any): void {
     const bottleneckFactors: string[] = [];
 
-    if (summary.requests.avgDuration > this.config.responseTimeThreshold * 0.8) {
+    if (
+      summary.requests.avgDuration >
+      this.config.responseTimeThreshold * 0.8
+    ) {
       bottleneckFactors.push('high_response_time');
     }
 
@@ -287,16 +309,24 @@ export class AlertService {
       bottleneckFactors.push('high_error_rate');
     }
 
-    if (summary.database.avgDuration > this.config.databaseQueryThreshold * 0.8) {
+    if (
+      summary.database.avgDuration >
+      this.config.databaseQueryThreshold * 0.8
+    ) {
       bottleneckFactors.push('slow_database');
     }
 
-    if (summary.externalApi.avgDuration > this.config.externalApiThreshold * 0.8) {
+    if (
+      summary.externalApi.avgDuration >
+      this.config.externalApiThreshold * 0.8
+    ) {
       bottleneckFactors.push('slow_external_api');
     }
 
     if (summary.system) {
-      const memoryUsagePercent = summary.system.memoryUsage.heapUsed / summary.system.memoryUsage.heapTotal;
+      const memoryUsagePercent =
+        summary.system.memoryUsage.heapUsed /
+        summary.system.memoryUsage.heapTotal;
       if (memoryUsagePercent > this.config.memoryUsageThreshold * 0.8) {
         bottleneckFactors.push('high_memory_usage');
       }
@@ -322,7 +352,7 @@ export class AlertService {
   private sendAlertNotification(alert: Alert): void {
     // This is where you would integrate with your notification system
     // Examples: email, Slack, PagerDuty, webhook, etc.
-    
+
     logger.info('Alert notification sent', {
       event: 'alert_notification_sent',
       alertId: alert.id,

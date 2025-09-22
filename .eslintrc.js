@@ -3,6 +3,7 @@ module.exports = {
   parserOptions: {
     ecmaVersion: 2020,
     sourceType: 'module',
+    project: './tsconfig.json',
   },
   plugins: ['@typescript-eslint', 'prettier'],
   extends: [
@@ -18,6 +19,7 @@ module.exports = {
     'no-duplicate-imports': 'error',
     'no-unused-expressions': 'error',
     'prefer-const': 'error',
+    'no-undef': 'off', // Turn off no-undef for TypeScript files
   },
   env: {
     node: true,

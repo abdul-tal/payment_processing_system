@@ -10,7 +10,7 @@ export function initializeTracing(): NodeSDK {
   const serviceName = process.env['SERVICE_NAME'] || 'payment-backend';
   const serviceVersion = process.env['SERVICE_VERSION'] || '1.0.0';
   const environment = process.env['NODE_ENV'] || 'development';
-  
+
   // Configure resource attributes
   const resource = new Resource({
     [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
@@ -20,7 +20,8 @@ export function initializeTracing(): NodeSDK {
 
   // Configure Jaeger exporter
   const jaegerExporter = new JaegerExporter({
-    endpoint: process.env['JAEGER_ENDPOINT'] || 'http://localhost:14268/api/traces',
+    endpoint:
+      process.env['JAEGER_ENDPOINT'] || 'http://localhost:14268/api/traces',
   });
 
   // Initialize SDK
@@ -33,7 +34,7 @@ export function initializeTracing(): NodeSDK {
         },
         '@opentelemetry/instrumentation-http': {
           enabled: true,
-          ignoreIncomingRequestHook: (req) => {
+          ignoreIncomingRequestHook: req => {
             const url = req.url || '';
             return url.includes('/health') || url.includes('/metrics');
           },
@@ -63,7 +64,8 @@ export function startTracing(): void {
     sdk.start();
     logger.info('Tracing initialized successfully', {
       serviceName: process.env['SERVICE_NAME'] || 'payment-backend',
-      jaegerEndpoint: process.env['JAEGER_ENDPOINT'] || 'http://localhost:14268/api/traces'
+      jaegerEndpoint:
+        process.env['JAEGER_ENDPOINT'] || 'http://localhost:14268/api/traces',
     });
   } catch (error) {
     logger.error('Failed to initialize tracing:', error);

@@ -62,10 +62,10 @@ export function correlationIdMiddleware(
 
   // Capture response finish to log request completion
   const originalSend = res.send;
-  res.send = function(body) {
+  res.send = function (body) {
     const endTime = Date.now();
     const duration = endTime - (req.startTime || endTime);
-    
+
     // Add response information to span
     tracingService.addAttributesToActiveSpan({
       'http.status_code': res.statusCode,

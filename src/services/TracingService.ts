@@ -1,4 +1,10 @@
-import { trace, context, SpanStatusCode, SpanKind, Span } from '@opentelemetry/api';
+import {
+  trace,
+  context,
+  SpanStatusCode,
+  SpanKind,
+  Span,
+} from '@opentelemetry/api';
 import { SemanticAttributes } from '@opentelemetry/semantic-conventions';
 import { logger } from '../config/logger';
 
@@ -37,11 +43,15 @@ export class TracingService {
     url: string,
     attributes?: Record<string, string | number | boolean>
   ): Span {
-    return this.startSpan(`HTTP ${method} ${url}`, {
-      [SemanticAttributes.HTTP_METHOD]: method,
-      [SemanticAttributes.HTTP_URL]: url,
-      ...attributes,
-    }, SpanKind.CLIENT);
+    return this.startSpan(
+      `HTTP ${method} ${url}`,
+      {
+        [SemanticAttributes.HTTP_METHOD]: method,
+        [SemanticAttributes.HTTP_URL]: url,
+        ...attributes,
+      },
+      SpanKind.CLIENT
+    );
   }
 
   /**
@@ -118,7 +128,10 @@ export class TracingService {
     fn: () => Promise<T> | T
   ): Promise<T> {
     try {
-      const result = await context.with(trace.setSpan(context.active(), span), fn);
+      const result = await context.with(
+        trace.setSpan(context.active(), span),
+        fn
+      );
       span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (error) {
@@ -136,7 +149,9 @@ export class TracingService {
   /**
    * Add attributes to the current active span
    */
-  public addAttributesToActiveSpan(attributes: Record<string, string | number | boolean>): void {
+  public addAttributesToActiveSpan(
+    attributes: Record<string, string | number | boolean>
+  ): void {
     const activeSpan = trace.getActiveSpan();
     if (activeSpan) {
       activeSpan.setAttributes(attributes);
@@ -146,7 +161,10 @@ export class TracingService {
   /**
    * Add an event to the current active span
    */
-  public addEventToActiveSpan(name: string, attributes?: Record<string, string | number | boolean>): void {
+  public addEventToActiveSpan(
+    name: string,
+    attributes?: Record<string, string | number | boolean>
+  ): void {
     const activeSpan = trace.getActiveSpan();
     if (activeSpan) {
       activeSpan.addEvent(name, attributes);
@@ -199,10 +217,14 @@ export class TracingService {
     attributes?: Record<string, string | number | boolean>,
     kind?: SpanKind
   ): Span {
-    return this.tracer.startSpan(name, {
-      kind: kind || SpanKind.INTERNAL,
-      attributes,
-    }, context.active());
+    return this.tracer.startSpan(
+      name,
+      {
+        kind: kind || SpanKind.INTERNAL,
+        attributes,
+      },
+      context.active()
+    );
   }
 
   /**
@@ -215,7 +237,7 @@ export class TracingService {
   ): Promise<T> {
     const span = this.startSpan(operationName, attributes);
     const startTime = Date.now();
-    
+
     try {
       const result = await this.executeInSpan(span, operation);
       const duration = Date.now() - startTime;
@@ -223,16 +245,19 @@ export class TracingService {
         'operation.duration_ms': duration,
         'operation.success': true,
       });
-      
+
       // Log slow operations
       if (duration > 1000) {
-        logger.warn(`Slow operation detected: ${operationName} took ${duration}ms`, {
-          operation: operationName,
-          duration,
-          traceId: this.getCurrentTraceId(),
-        });
+        logger.warn(
+          `Slow operation detected: ${operationName} took ${duration}ms`,
+          {
+            operation: operationName,
+            duration,
+            traceId: this.getCurrentTraceId(),
+          }
+        );
       }
-      
+
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;

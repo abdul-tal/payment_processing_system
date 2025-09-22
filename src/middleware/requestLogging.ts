@@ -52,7 +52,10 @@ export function requestLoggingMiddleware(
     'http.request.path': req.path,
     'http.request.user_agent': req.get('User-Agent') || 'unknown',
     'http.request.content_type': req.get('Content-Type') || 'unknown',
-    'http.request.content_length': parseInt(req.get('Content-Length') || '0', 10),
+    'http.request.content_length': parseInt(
+      req.get('Content-Length') || '0',
+      10
+    ),
     'http.request.remote_address': req.ip || 'unknown',
   });
 
@@ -73,14 +76,14 @@ export function requestLoggingMiddleware(
   let responseSize = 0;
 
   // Override res.send to capture response data
-  res.send = function(body: any) {
+  res.send = function (body: any) {
     responseBody = body;
     responseSize = Buffer.byteLength(body || '', 'utf8');
     return originalSend.call(this, body);
   };
 
   // Override res.json to capture JSON response data
-  res.json = function(obj: any) {
+  res.json = function (obj: any) {
     responseBody = obj;
     const jsonString = JSON.stringify(obj);
     responseSize = Buffer.byteLength(jsonString, 'utf8');
@@ -88,7 +91,7 @@ export function requestLoggingMiddleware(
   };
 
   // Override res.end to capture final response
-  res.end = function(chunk?: any, encoding?: any) {
+  res.end = function (chunk?: any, encoding?: any) {
     if (chunk && !responseBody) {
       responseBody = chunk;
       responseSize = Buffer.byteLength(chunk || '', encoding || 'utf8');
@@ -127,9 +130,10 @@ export function requestLoggingMiddleware(
       responseSize,
       responseContentType: res.get('Content-Type'),
       // Only log response body for errors or if explicitly enabled
-      responseBody: (statusCode >= 400 && process.env.LOG_RESPONSE_BODY === 'true') 
-        ? responseBody 
-        : undefined,
+      responseBody:
+        statusCode >= 400 && process.env.LOG_RESPONSE_BODY === 'true'
+          ? responseBody
+          : undefined,
     };
 
     // Log response completion
@@ -138,12 +142,15 @@ export function requestLoggingMiddleware(
     // Add performance metrics event to trace
     tracingService.addEventToActiveSpan('request_completed', {
       'http.status_code': statusCode.toString(),
-      'duration_ms': duration.toString(),
-      'response_size': responseSize.toString(),
+      duration_ms: duration.toString(),
+      response_size: responseSize.toString(),
     });
 
     // Log slow requests
-    const slowRequestThreshold = parseInt(process.env.SLOW_REQUEST_THRESHOLD_MS || '5000', 10);
+    const slowRequestThreshold = parseInt(
+      process.env.SLOW_REQUEST_THRESHOLD_MS || '5000',
+      10
+    );
     if (duration > slowRequestThreshold) {
       logger.warn('Slow Request Detected', {
         ...responseLogContext,
@@ -152,8 +159,8 @@ export function requestLoggingMiddleware(
       });
 
       tracingService.addEventToActiveSpan('slow_request_detected', {
-        'duration_ms': duration.toString(),
-        'threshold_ms': slowRequestThreshold.toString(),
+        duration_ms: duration.toString(),
+        threshold_ms: slowRequestThreshold.toString(),
       });
     }
   });
@@ -197,7 +204,12 @@ export function databaseLoggingMiddleware() {
       });
     },
 
-    afterQuery: (query: string, parameters?: any[], duration?: number, error?: Error) => {
+    afterQuery: (
+      query: string,
+      parameters?: any[],
+      duration?: number,
+      error?: Error
+    ) => {
       const traceId = tracingService.getCurrentTraceId();
       const spanId = tracingService.getCurrentSpanId();
 
@@ -232,7 +244,11 @@ export function databaseLoggingMiddleware() {
  */
 export function externalApiLoggingMiddleware() {
   return {
-    beforeRequest: (url: string, method: string, headers?: Record<string, string>) => {
+    beforeRequest: (
+      url: string,
+      method: string,
+      headers?: Record<string, string>
+    ) => {
       const traceId = tracingService.getCurrentTraceId();
       const spanId = tracingService.getCurrentSpanId();
 
