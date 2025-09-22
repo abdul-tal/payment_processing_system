@@ -1,12 +1,16 @@
 import 'reflect-metadata';
 import dotenv from 'dotenv';
+
+// Load environment variables first
+dotenv.config();
+
+// Initialize tracing before any other modules
+import './config/tracing-simple';
+
 import { createApp } from './app';
 import { initializeDatabase } from './config/database';
 import { initializeRedis } from './config/redis';
 import { logger } from './config/logger';
-
-// Load environment variables
-dotenv.config();
 
 const PORT = process.env['PORT'] || 3000;
 

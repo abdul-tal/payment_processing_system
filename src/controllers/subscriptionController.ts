@@ -6,6 +6,7 @@ import {
 } from '../services/subscriptionService';
 import { SubscriptionStatus, BillingInterval } from '../entities/Subscription';
 import { logger } from '../config/logger';
+import { tracingService } from '../services/TracingService';
 import { randomUUID } from 'crypto';
 
 export class SubscriptionController {
@@ -115,8 +116,21 @@ export class SubscriptionController {
         metadata,
       };
 
-      const subscription =
-        await this.subscriptionService.createSubscription(createRequest);
+      const span = tracingService.startSubscriptionSpan(
+        'create',
+        undefined,
+        {
+          'customer.email': customer_email,
+          'subscription.plan': plan_name,
+          'subscription.amount': amount,
+          'subscription.currency': currency || 'USD',
+          'subscription.billing_interval': billing_interval,
+        }
+      );
+
+      const subscription = await tracingService.executeInSpan(span, async () => {
+        return await this.subscriptionService.createSubscription(createRequest);
+      });
 
       logger.info('Subscription created via API', {
         correlationId,

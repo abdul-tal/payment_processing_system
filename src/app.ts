@@ -5,9 +5,12 @@ import compression from 'compression';
 import morgan from 'morgan';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { correlationIdMiddleware } from './middleware/correlationId';
+import { requestLoggingMiddleware } from './middleware/requestLogging';
 import { errorHandler } from './middleware/errorHandler';
 import { validationErrorHandler } from './middleware/validation';
 import { logger } from './config/logger';
+import { metricsService } from './services/MetricsService';
+import { alertService } from './services/AlertService';
 import paymentRoutes from './routes/payments';
 import paymentsV1Routes from './routes/paymentsV1';
 import webhookRoutes from './routes/webhookRoutes';
@@ -79,6 +82,9 @@ export function createApp(): express.Application {
 
   // Correlation ID middleware
   app.use(correlationIdMiddleware);
+
+  // Request logging middleware with trace context
+  app.use(requestLoggingMiddleware);
 
   // Logging middleware
   app.use(

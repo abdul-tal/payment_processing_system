@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { logger } from '../config/logger';
+import { tracingService } from '../services/TracingService';
 import {
   paymentService,
   TransactionRequest,
@@ -69,7 +70,20 @@ export class PaymentController {
     };
 
     try {
-      const result = await paymentService.processPurchase(transactionRequest);
+      const span = tracingService.startPaymentSpan(
+        'purchase',
+        'credit_card',
+        body.amount,
+        body.currency,
+        {
+          'customer.email': body.customerEmail,
+          'payment.idempotency_key': req.idempotencyKey || '',
+        }
+      );
+
+      const result = await tracingService.executeInSpan(span, async () => {
+        return await paymentService.processPurchase(transactionRequest);
+      });
 
       if (result.success) {
         const response: PaymentResponseDto = {
@@ -170,8 +184,20 @@ export class PaymentController {
     };
 
     try {
-      const result =
-        await paymentService.authorizeTransaction(authorizeRequest);
+      const span = tracingService.startPaymentSpan(
+        'authorize',
+        'credit_card',
+        body.amount,
+        body.currency,
+        {
+          'customer.email': body.customerEmail,
+          'payment.idempotency_key': req.idempotencyKey || '',
+        }
+      );
+
+      const result = await tracingService.executeInSpan(span, async () => {
+        return await paymentService.authorizeTransaction(authorizeRequest);
+      });
 
       if (result.success) {
         const response: PaymentResponseDto = {
@@ -252,7 +278,19 @@ export class PaymentController {
     };
 
     try {
-      const result = await paymentService.captureTransaction(captureRequest);
+      const span = tracingService.startPaymentSpan(
+        'capture',
+        'credit_card',
+        body.amount,
+        'USD',
+        {
+          'transaction.id': transactionId,
+        }
+      );
+
+      const result = await tracingService.executeInSpan(span, async () => {
+        return await paymentService.captureTransaction(captureRequest);
+      });
 
       if (result.success) {
         const response: CaptureResponseDto = {
@@ -341,7 +379,21 @@ export class PaymentController {
     };
 
     try {
-      const result = await paymentService.refundTransaction(refundRequest);
+      const span = tracingService.startPaymentSpan(
+        'refund',
+        'credit_card',
+        body.amount,
+        'USD',
+        {
+          'transaction.id': transactionId,
+          'refund.reason': body.reason || 'Refund requested',
+          'payment.idempotency_key': req.idempotencyKey || '',
+        }
+      );
+
+      const result = await tracingService.executeInSpan(span, async () => {
+        return await paymentService.refundTransaction(refundRequest);
+      });
 
       if (result.success) {
         const refundId = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -422,7 +474,20 @@ export class PaymentController {
     };
 
     try {
-      const result = await paymentService.cancelTransaction(cancelRequest);
+      const span = tracingService.startPaymentSpan(
+        'cancel',
+        'credit_card',
+        undefined,
+        'USD',
+        {
+          'transaction.id': transactionId,
+          'payment.idempotency_key': req.idempotencyKey || '',
+        }
+      );
+
+      const result = await tracingService.executeInSpan(span, async () => {
+        return await paymentService.cancelTransaction(cancelRequest);
+      });
 
       if (result.success) {
         const response: CancelResponseDto = {

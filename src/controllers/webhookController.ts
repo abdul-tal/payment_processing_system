@@ -7,6 +7,7 @@ import {
   WebhookStatus,
 } from '../entities/WebhookEvent';
 import { logger } from '../config/logger';
+import { tracingService } from '../services/TracingService';
 import { webhookQueue } from '../services/webhookQueue';
 
 export interface WebhookRequest extends Request {
@@ -26,89 +27,113 @@ export class WebhookController {
     req: WebhookRequest,
     res: Response
   ): Promise<void> => {
+    const span = tracingService.startWebhookSpan(
+      'receive',
+      undefined,
+      {
+        'webhook.source': 'authorize_net',
+        'http.method': req.method,
+        'http.url': req.url,
+      }
+    );
+
     try {
-      // Parse the raw body to JSON since we're using express.raw()
-      let payload;
-      try {
-        payload = JSON.parse(req.body.toString());
-      } catch (parseError) {
-        logger.warn('Failed to parse webhook payload as JSON', {
-          error: parseError,
-        });
-        res.status(400).json({ error: 'Invalid JSON payload' });
-        return;
-      }
-
-      if (!payload || !payload.eventType) {
-        logger.warn('Webhook received without eventType', { payload });
-        res.status(400).json({ error: 'Invalid webhook payload' });
-        return;
-      }
-
-      // Extract event information
-      const eventType = this.mapAuthorizeNetEventType(payload.eventType);
-      const eventId = payload.id || randomUUID();
-      const externalId =
-        payload.payload?.id || payload.payload?.transId || null;
-
-      // Check for duplicate events
-      const existingEvent = await this.webhookEventRepository.findOne({
-        where: { event_id: eventId },
-      });
-
-      if (existingEvent) {
-        logger.info('Duplicate webhook event received', { eventId, eventType });
-        res.status(200).json({ message: 'Event already processed', eventId });
-        return;
-      }
-
-      // Create webhook event record
-      const webhookEvent = new WebhookEvent();
-      webhookEvent.event_id = eventId;
-      webhookEvent.external_id = externalId;
-      webhookEvent.event_type = eventType;
-      webhookEvent.status = WebhookStatus.PENDING;
-      webhookEvent.payload = payload;
-      webhookEvent.source = 'authorize_net';
-      webhookEvent.related_transaction_id =
-        this.extractTransactionId(payload) || null;
-      webhookEvent.related_subscription_id =
-        this.extractSubscriptionId(payload) || null;
-      webhookEvent.retry_count = 0;
-      webhookEvent.max_retries = 3;
-
-      // Save to database
-      await this.webhookEventRepository.save(webhookEvent);
-
-      // Add to processing queue
-      await webhookQueue.add(
-        'process-webhook',
-        {
-          webhookEventId: webhookEvent.id,
-          eventType: eventType,
-          payload: payload,
-        },
-        {
-          delay: 0,
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
-          },
-          removeOnComplete: 100,
-          removeOnFail: 50,
+      await tracingService.executeInSpan(span, async () => {
+        // Parse the raw body to JSON since we're using express.raw()
+        let payload;
+        try {
+          payload = JSON.parse(req.body.toString());
+        } catch (parseError) {
+          logger.warn('Failed to parse webhook payload as JSON', {
+            error: parseError,
+          });
+          res.status(400).json({ error: 'Invalid JSON payload' });
+          return;
         }
-      );
 
-      logger.info('Webhook event queued for processing', {
-        eventId: webhookEvent.id,
-        eventType,
-        externalId,
-      });
+        if (!payload || !payload.eventType) {
+          logger.warn('Webhook received without eventType', { payload });
+          res.status(400).json({ error: 'Invalid webhook payload' });
+          return;
+        }
 
-      res.status(200).json({
-        message: 'Webhook received and queued for processing',
-        eventId: webhookEvent.id,
+        // Extract event information
+        const eventType = this.mapAuthorizeNetEventType(payload.eventType);
+        const eventId = payload.id || randomUUID();
+
+        // Add event details to tracing span
+        tracingService.addAttributesToActiveSpan({
+          'webhook.event_type': eventType,
+          'webhook.event_id': eventId,
+          'webhook.payload_size': JSON.stringify(payload).length,
+        });
+
+        // Check for duplicate events
+        const existingEvent = await this.webhookEventRepository.findOne({
+          where: { event_id: eventId },
+        });
+
+        if (existingEvent) {
+          logger.info('Duplicate webhook event received', {
+            eventId,
+            eventType,
+            status: existingEvent.status,
+          });
+          res.status(200).json({
+            message: 'Event already processed',
+            eventId,
+            status: existingEvent.status,
+          });
+          return;
+        }
+
+        // Create new webhook event
+        const webhookEvent = new WebhookEvent();
+        webhookEvent.event_id = eventId;
+        webhookEvent.event_type = eventType;
+        webhookEvent.status = WebhookStatus.PENDING;
+        webhookEvent.payload = payload;
+        webhookEvent.source = 'authorize_net';
+        webhookEvent.related_transaction_id =
+          this.extractTransactionId(payload) || null;
+        webhookEvent.related_subscription_id =
+          this.extractSubscriptionId(payload) || null;
+        webhookEvent.retry_count = 0;
+        webhookEvent.max_retries = 3;
+
+        // Save to database
+        await this.webhookEventRepository.save(webhookEvent);
+
+        // Add to processing queue
+        await webhookQueue.add(
+          'process-webhook',
+          {
+            webhookEventId: webhookEvent.id,
+            eventType: eventType,
+            payload: payload,
+          },
+          {
+            delay: 0,
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 2000,
+            },
+            removeOnComplete: 100,
+            removeOnFail: 50,
+          }
+        );
+
+        logger.info('Webhook event queued for processing', {
+          eventId: webhookEvent.id,
+          eventType,
+          externalId: eventId,
+        });
+
+        res.status(200).json({
+          message: 'Webhook received and queued for processing',
+          eventId: webhookEvent.id,
+        });
       });
     } catch (error) {
       logger.error('Error processing webhook:', error);
