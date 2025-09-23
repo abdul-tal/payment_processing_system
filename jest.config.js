@@ -10,6 +10,12 @@ module.exports = {
     'src/**/*.ts',
     '!src/**/*.d.ts',
   ],
+  coveragePathIgnorePatterns: [
+    'src/config/*',
+    'src/scripts/*',
+    'src/seeds/*',
+    'src/types/*'
+  ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],

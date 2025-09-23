@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { jwtService } from '../services/SimpleJwtService';
+import { jwtService } from '../services/jwtService';
 import { AppDataSource } from '../ormconfig';
 import { User } from '../entities/User';
 import { logger } from '../config/logger';

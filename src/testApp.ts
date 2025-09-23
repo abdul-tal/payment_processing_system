@@ -8,6 +8,7 @@ import { authenticateApiKey } from './middleware/testApiKeyAuth';
 
 // Import actual payment system routes
 import { subscriptionRoutes } from './routes/subscriptionRoutes';
+import { authRoutes } from './routes/authRoutes';
 import webhookRoutes from './routes/webhookRoutes';
 import paymentsV1 from './routes/paymentsV1';
 import healthRoutes from './routes/health';
@@ -49,6 +50,7 @@ app.use('/api/v1', authenticateApiKey());
 
 // Use actual payment system routes
 app.use('/api/v1/health', healthRoutes);
+app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/payments', paymentsV1);
 app.use('/api/v1/subscriptions', subscriptionRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);

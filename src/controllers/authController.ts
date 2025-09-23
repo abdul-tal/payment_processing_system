@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { AppDataSource } from '../ormconfig';
 import { User } from '../entities/User';
-import { jwtService } from '../services/SimpleJwtService';
+import { jwtService } from '../services/jwtService';
 import { logger } from '../config/logger';
 import { validationResult } from 'express-validator';
 
@@ -23,7 +23,7 @@ export interface RegisterRequest {
   lastName?: string;
 }
 
-class SimpleAuthController {
+class AuthController {
   private userRepository = AppDataSource.getRepository(User);
 
   /**
@@ -164,4 +164,4 @@ class SimpleAuthController {
   };
 }
 
-export const authController = new SimpleAuthController();
+export const authController = new AuthController();

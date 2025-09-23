@@ -16,8 +16,8 @@ export interface TokenPair {
   expiresIn: number;
 }
 
-class SimpleJwtService {
-  private static instance: SimpleJwtService;
+class JwtService {
+  private static instance: JwtService;
   private accessTokenSecret: string;
   private refreshTokenSecret: string;
   private accessTokenExpiry: string;
@@ -41,11 +41,11 @@ class SimpleJwtService {
     }
   }
 
-  public static getInstance(): SimpleJwtService {
-    if (!SimpleJwtService.instance) {
-      SimpleJwtService.instance = new SimpleJwtService();
+  public static getInstance(): JwtService {
+    if (!JwtService.instance) {
+      JwtService.instance = new JwtService();
     }
-    return SimpleJwtService.instance;
+    return JwtService.instance;
   }
 
   /**
@@ -162,4 +162,4 @@ class SimpleJwtService {
   }
 }
 
-export const jwtService = SimpleJwtService.getInstance();
+export const jwtService = JwtService.getInstance();
