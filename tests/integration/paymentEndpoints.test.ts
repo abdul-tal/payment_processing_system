@@ -3,9 +3,19 @@ import { createApp } from '../../src/app';
 import { paymentService } from '../../src/services/paymentService';
 import { clearCleanupInterval } from '../../src/middleware/idempotency';
 
-// Mock the payment service for integration tests
+// Mock the payment service and JWT middleware for integration tests
 jest.mock('../../src/services/paymentService');
 jest.mock('../../src/config/logger');
+jest.mock('../../src/middleware/jwtAuth', () => ({
+  jwtAuth: (req: any, _res: any, next: any) => {
+    req.user = {
+      id: 'test-user-id',
+      username: 'testuser',
+      email: 'test@example.com',
+    };
+    next();
+  },
+}));
 
 const mockPaymentService = paymentService as jest.Mocked<typeof paymentService>;
 
@@ -67,6 +77,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/purchase')
+        .set('X-API-Key', 'test-api-key-12345')
         .send(validPaymentData)
         .expect(201);
 
@@ -88,6 +99,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/purchase')
+        .set('X-API-Key', 'test-api-key-12345')
         .send(invalidData)
         .expect(400);
 
@@ -101,6 +113,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/purchase')
+        .set('X-API-Key', 'test-api-key-12345')
         .send(validPaymentData)
         .expect(400);
 
@@ -123,6 +136,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/purchase')
+        .set('X-API-Key', 'test-api-key-12345')
         .send(validPaymentData)
         .expect(400);
 
@@ -150,6 +164,7 @@ describe('Payment Endpoints Integration Tests', () => {
       // First request
       const response1 = await request(app)
         .post('/api/v1/payments/purchase')
+        .set('X-API-Key', 'test-api-key-12345')
         .set('Idempotency-Key', idempotencyKey)
         .send(validPaymentData)
         .expect(201);
@@ -157,6 +172,7 @@ describe('Payment Endpoints Integration Tests', () => {
       // Second request with same idempotency key should return cached response
       const response2 = await request(app)
         .post('/api/v1/payments/purchase')
+        .set('X-API-Key', 'test-api-key-12345')
         .set('Idempotency-Key', idempotencyKey)
         .send(validPaymentData)
         .expect(201);
@@ -183,6 +199,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/authorize')
+        .set('X-API-Key', 'test-api-key-12345')
         .send(validPaymentData)
         .expect(201);
 
@@ -207,6 +224,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/authorize')
+        .set('X-API-Key', 'test-api-key-12345')
         .send(validPaymentData)
         .expect(400);
 
@@ -231,6 +249,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/auth_123456789/capture')
+        .set('X-API-Key', 'test-api-key-12345')
         .send({ amount: 75.0 })
         .expect(200);
 
@@ -255,6 +274,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/auth_123456789/capture')
+        .set('X-API-Key', 'test-api-key-12345')
         .send({})
         .expect(200);
 
@@ -278,6 +298,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/invalid_txn/capture')
+        .set('X-API-Key', 'test-api-key-12345')
         .send({ amount: 50.0 })
         .expect(400);
 
@@ -290,6 +311,7 @@ describe('Payment Endpoints Integration Tests', () => {
     it('should validate transaction ID parameter', async () => {
       await request(app)
         .post('/api/v1/payments//capture') // Empty transaction ID
+        .set('X-API-Key', 'test-api-key-12345')
         .send({ amount: 50.0 })
         .expect(404);
     });
@@ -309,6 +331,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/txn_123456789/refund')
+        .set('X-API-Key', 'test-api-key-12345')
         .send({ amount: 50.0, reason: 'Customer request' })
         .expect(201);
 
@@ -334,6 +357,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/txn_123456789/refund')
+        .set('X-API-Key', 'test-api-key-12345')
         .send({ reason: 'Full refund' })
         .expect(201);
 
@@ -357,6 +381,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/txn_123456789/refund')
+        .set('X-API-Key', 'test-api-key-12345')
         .send({ amount: 25.0 })
         .expect(400);
 
@@ -382,6 +407,7 @@ describe('Payment Endpoints Integration Tests', () => {
       // First refund request
       const response1 = await request(app)
         .post('/api/v1/payments/txn_123456789/refund')
+        .set('X-API-Key', 'test-api-key-12345')
         .set('Idempotency-Key', idempotencyKey)
         .send({ amount: 50.0, reason: 'Customer request' })
         .expect(201);
@@ -389,6 +415,7 @@ describe('Payment Endpoints Integration Tests', () => {
       // Second refund request with same idempotency key
       const response2 = await request(app)
         .post('/api/v1/payments/txn_123456789/refund')
+        .set('X-API-Key', 'test-api-key-12345')
         .set('Idempotency-Key', idempotencyKey)
         .send({ amount: 50.0, reason: 'Customer request' })
         .expect(201);
@@ -411,6 +438,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/auth_123456789/cancel')
+        .set('X-API-Key', 'test-api-key-12345')
         .send({})
         .expect(200);
 
@@ -434,6 +462,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/settled_txn/cancel')
+        .set('X-API-Key', 'test-api-key-12345')
         .send({})
         .expect(400);
 
@@ -458,6 +487,7 @@ describe('Payment Endpoints Integration Tests', () => {
       // First cancel request
       const response1 = await request(app)
         .post('/api/v1/payments/auth_123456789/cancel')
+        .set('X-API-Key', 'test-api-key-12345')
         .set('Idempotency-Key', idempotencyKey)
         .send({})
         .expect(200);
@@ -465,6 +495,7 @@ describe('Payment Endpoints Integration Tests', () => {
       // Second cancel request with same idempotency key
       const response2 = await request(app)
         .post('/api/v1/payments/auth_123456789/cancel')
+        .set('X-API-Key', 'test-api-key-12345')
         .set('Idempotency-Key', idempotencyKey)
         .send({})
         .expect(200);
@@ -478,6 +509,7 @@ describe('Payment Endpoints Integration Tests', () => {
     it('should handle invalid idempotency key format', async () => {
       const response = await request(app)
         .post('/api/v1/payments/purchase')
+        .set('X-API-Key', 'test-api-key-12345')
         .set('Idempotency-Key', 'invalid key with spaces!')
         .send(validPaymentData)
         .expect(400);
@@ -495,6 +527,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/purchase')
+        .set('X-API-Key', 'test-api-key-12345')
         .send(incompleteData)
         .expect(400);
 
@@ -512,6 +545,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/purchase')
+        .set('X-API-Key', 'test-api-key-12345')
         .send(invalidCardData)
         .expect(400);
 
@@ -526,6 +560,7 @@ describe('Payment Endpoints Integration Tests', () => {
 
       const response = await request(app)
         .post('/api/v1/payments/purchase')
+        .set('X-API-Key', 'test-api-key-12345')
         .send(validPaymentData)
         .expect(500);
 

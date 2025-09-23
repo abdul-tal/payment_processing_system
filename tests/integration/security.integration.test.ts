@@ -1,6 +1,18 @@
 import request from 'supertest';
 import testApp from '../../src/testApp';
 
+// Mock JWT authentication middleware for tests
+jest.mock('../../src/middleware/jwtAuth', () => ({
+  jwtAuth: (req: any, _res: any, next: any) => {
+    req.user = {
+      id: 'test-user-id',
+      username: 'testuser',
+      email: 'test@example.com',
+    };
+    next();
+  },
+}));
+
 // Mock webhook queue services to prevent Redis connections
 jest.mock('../../src/services/webhookQueue', () => ({
   addWebhookToQueue: jest.fn().mockResolvedValue(undefined),

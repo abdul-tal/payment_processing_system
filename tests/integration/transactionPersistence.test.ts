@@ -10,6 +10,18 @@ import { clearCleanupInterval } from '../../src/middleware/idempotency';
 import { Repository } from 'typeorm';
 import { Application } from 'express';
 
+// Mock JWT authentication middleware for tests
+jest.mock('../../src/middleware/jwtAuth', () => ({
+  jwtAuth: (req: any, _res: any, next: any) => {
+    req.user = {
+      id: 'test-user-id',
+      username: 'testuser',
+      email: 'test@example.com',
+    };
+    next();
+  },
+}));
+
 // Unmock PaymentService for this test to allow real database operations
 jest.unmock('../../src/services/paymentService');
 
