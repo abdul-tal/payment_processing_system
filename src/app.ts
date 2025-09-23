@@ -17,6 +17,7 @@ import paymentsV1Routes from './routes/paymentsV1';
 import webhookRoutes from './routes/webhookRoutes';
 import healthRoutes from './routes/health';
 import { subscriptionRoutes } from './routes/subscriptionRoutes';
+import { authRoutes } from './routes/authRoutes';
 
 export function createApp(): express.Application {
   const app = express();
@@ -62,8 +63,10 @@ export function createApp(): express.Application {
     try {
       await rateLimiter.consume(req.ip || 'unknown');
       next();
-    } catch (rejRes: any) {
-      const secs = Math.round(rejRes.msBeforeNext / 1000) || 1;
+    } catch (rejRes: unknown) {
+      const secs =
+        Math.round((rejRes as { msBeforeNext: number }).msBeforeNext / 1000) ||
+        1;
       res.set('Retry-After', String(secs));
       res.status(429).json({
         error: 'Too Many Requests',
@@ -85,7 +88,7 @@ export function createApp(): express.Application {
   app.use(correlationIdMiddleware);
 
   // Request logging middleware with trace context
-  app.use(requestLoggingMiddleware as any);
+  app.use(requestLoggingMiddleware as express.RequestHandler);
 
   // Logging middleware
   app.use(
@@ -102,6 +105,7 @@ export function createApp(): express.Application {
   app.use('/health', healthRoutes);
 
   // API routes
+  app.use('/api/v1/auth', authRoutes);
   app.use('/api/payments', paymentRoutes);
   app.use('/api/v1/payments', paymentsV1Routes);
   app.use('/api/v1/subscriptions', subscriptionRoutes);

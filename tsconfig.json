@@ -40,7 +40,9 @@
   },
   "include": [
     "src/**/*",
-    "tests/**/*"
+    "tests/**/*",
+    "migrations/**/*",
+    "ormconfig.ts"
   ],
   "exclude": [
     "node_modules",

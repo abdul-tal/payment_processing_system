@@ -6,3 +6,4 @@ export {
 } from './Subscription';
 export { WebhookEvent, WebhookEventType, WebhookStatus } from './WebhookEvent';
 export { AuditLog, AuditAction, AuditEntityType } from './AuditLog';
+export { User } from './User';

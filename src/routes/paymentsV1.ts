@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { validateRequest } from '../middleware/validation';
 import { asyncHandler } from '../middleware/errorHandler';
 import { idempotencyMiddleware } from '../middleware/idempotency';
+import { jwtAuth } from '../middleware/jwtAuth';
 import { paymentController } from '../controllers/paymentController';
 import {
   purchasePaymentSchema,
@@ -12,6 +13,9 @@ import {
 } from '../validation/paymentSchemas';
 
 const router = Router();
+
+// Apply JWT authentication to all routes
+router.use(jwtAuth);
 
 // Apply idempotency middleware to all routes
 router.use(idempotencyMiddleware);
