@@ -14,7 +14,9 @@ module.exports = {
     'src/config/*',
     'src/scripts/*',
     'src/seeds/*',
-    'src/types/*'
+    'src/types/*',
+    'src/index.ts',
+    'src/server.ts'
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
