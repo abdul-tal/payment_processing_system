@@ -36,7 +36,7 @@ const WorkerDataSource = new DataSource({
 /**
  * Background worker for processing webhook events
  */
-class WebhookWorker {
+export class WebhookWorker {
   private isShuttingDown = false;
 
   async start(): Promise<void> {
