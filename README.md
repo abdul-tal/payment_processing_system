@@ -23,6 +23,54 @@ A robust, production-ready payment backend service that integrates with Authoriz
 - **Rate Limiting**: API abuse prevention
 - **Audit Logging**: Comprehensive transaction audit trail
 
+## 🐳 Containerization
+
+The application is containerized using Docker and Docker Compose for both development and production environments.
+
+### Development
+- **Hot-reloading** enabled with `ts-node-dev`
+- **Debugging** support with source maps
+- **Database migrations** with TypeORM
+- **Environment variables** from `.env` file
+
+### Production
+- Multi-stage build for optimized image size
+- Production dependencies only
+- Health checks and proper signal handling
+- Logging to stdout/stderr
+
+### Available Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| app | 3000 | Main API service |
+| postgres | 5432 | PostgreSQL database |
+| redis | 6379 | Redis for caching and queues |
+| prometheus | 9091 | Metrics collection |
+| grafana | 3001 | Monitoring dashboards |
+
+### Building and Running
+
+1. **Build the application**:
+   ```bash
+   docker-compose build
+   ```
+
+2. **Start all services**:
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Run database migrations**:
+   ```bash
+   docker-compose run --rm migrate
+   ```
+
+4. **View logs**:
+   ```bash
+   docker-compose logs -f
+   ```
+
 ## 🛠 Technology Stack
 
 - **Runtime**: Node.js 18.x LTS with TypeScript 5.x
@@ -46,7 +94,41 @@ Before setting up the project, ensure you have the following installed:
 
 ## 🚀 Quick Start
 
-### 1. Clone and Install Dependencies
+### Containerized Development (Recommended)
+
+1. **Start the development stack** (includes PostgreSQL, Redis, and the application):
+   ```bash
+   docker compose -f docker-compose.dev.yml up
+   ```
+   
+   This will start all services in the foreground with logs visible. Press `Ctrl+C` to stop all services.
+   
+   For running in detached mode (in the background), use:
+   ```bash
+   docker compose -f docker-compose.dev.yml up -d
+   ```
+
+2. **Run database migrations**:
+   ```bash
+   docker compose -f docker-compose.dev.yml run --rm migrate
+   ```
+   
+   Note: The migrations will also run automatically when the application starts.
+
+3. **Access the application**:
+   - API: http://localhost:3000
+   - API Documentation: http://localhost:3000/api-docs
+   - Database: PostgreSQL on localhost:5432
+   - Redis: localhost:6379
+
+4. **View logs**:
+   ```bash
+   docker-compose logs -f
+   ```
+
+### Local Development Setup
+
+#### 1. Clone and Install Dependencies
 
 ```bash
 git clone <repository-url>

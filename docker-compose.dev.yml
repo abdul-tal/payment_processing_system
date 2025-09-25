@@ -1,0 +1,203 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: payment-backend-postgres-dev
+    environment:
+      POSTGRES_DB: payment_backend_dev
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev_user -d payment_backend_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - payment-dev-network
+
+  # Redis Cache and Queue
+  redis:
+    image: redis:7-alpine
+    platform: linux/amd64
+    container_name: payment-backend-redis-dev
+    ports:
+      - "6380:6379"  # Changed from 6379 to 6380 to avoid conflict
+    command: redis-server --appendonly yes --requirepass dev_redis_password
+    volumes:
+      - redis_data_dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - payment-dev-network
+
+  # Application (Development)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: payment-backend-app-dev
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Debug port
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      
+      # Database Configuration
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: payment_backend_dev
+      DB_USER: dev_user
+      DB_PASSWORD: dev_password
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379  # Internal port remains 6379
+      REDIS_PASSWORD: dev_redis_password
+      
+      # Security Configuration (use .env for real values in production)
+      API_SECRET_KEY: dev-secret-key-change-in-production
+      WEBHOOK_SECRET: dev-webhook-secret
+      ENCRYPTION_KEY: 32-character-encryption-key-dev
+      
+      # Authorize.Net Sandbox (configure in .env for real values)
+      ANET_API_LOGIN_ID: your_sandbox_login_id
+      ANET_TRANSACTION_KEY: your_sandbox_transaction_key
+      ANET_ENVIRONMENT: sandbox
+      
+      # Development-specific settings
+      DEBUG: payment-backend:*,express:*,typeorm:*
+      NODE_OPTIONS: --inspect=0.0.0.0:9229
+      
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+      - app_logs_dev:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - payment-dev-network
+    command: sh -c "npm install && npm run dev"
+
+  # Database Migration Service
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: payment-backend-migrate-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: payment_backend_dev
+      DB_USER: dev_user
+      DB_PASSWORD: dev_password
+      TS_NODE_PROJECT: tsconfig.json
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - payment-dev-network
+    command: sh -c "npm run migration:run && npm run db:seed"
+
+  # Worker for background jobs (Development)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: payment-backend-worker-dev
+    command: npm run worker:dev
+    environment:
+      NODE_ENV: development
+      
+      # Database Configuration
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: payment_backend_dev
+      DB_USER: dev_user
+      DB_PASSWORD: dev_password
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379  # Internal port remains 6379
+      REDIS_PASSWORD: dev_redis_password
+      
+      # Security Configuration
+      ENCRYPTION_KEY: 32-character-encryption-key-dev
+      
+      # Development-specific settings
+      DEBUG: payment-backend:*,bull:*
+      NODE_OPTIONS: --inspect=0.0.0.0:9230
+    
+    ports:
+      - "9230:9230"  # Worker debug port
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+      - worker_logs_dev:/app/logs
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - payment-dev-network
+
+  # Adminer for database management
+  adminer:
+    image: adminer:latest
+    platform: linux/amd64
+    container_name: payment-backend-adminer-dev
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+    networks:
+      - payment-dev-network
+
+  # Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    platform: linux/amd64
+    container_name: payment-backend-redis-commander-dev
+    environment:
+      - REDIS_HOSTS=local:redis:6379:0:dev_redis_password
+    ports:
+      - "8082:8081"  # Changed from 8081 to 8082 to avoid conflict
+    depends_on:
+      - redis
+    networks:
+      - payment-dev-network
+
+networks:
+  payment-dev-network:
+    driver: bridge
+
+volumes:
+  postgres_data_dev:
+  redis_data_dev:
+  app_logs_dev:
+  worker_logs_dev:
